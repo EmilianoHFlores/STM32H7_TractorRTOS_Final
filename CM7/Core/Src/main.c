@@ -27,7 +27,7 @@
 //#include "MPU9250.h"
 #include "mpu9250.h"
 #include "doublyLinkedList.h"
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,6 +77,29 @@ struct doubleLinkedList acce_list[3];
 struct doubleLinkedList mag_list[3];
 int n_window = 10;
 
+union bytes_to_float{
+	uint8_t val_arr[sizeof(float)];
+	float val;
+};
+union bytes_to_float *float_bytes = (union bytes_to_float *)0x30000000;
+
+/*float_bytes.val_arr[0] = 0,
+float_bytes.val_arr[1] = 0,
+float_bytes.val_arr[2] = 0,
+float_bytes.val_arr[3] = 0;*/
+uint16_t *const x = (uint16_t *)0x30000030;
+uint16_t *const y = (uint16_t *)0x30000040;
+uint16_t *const z = (uint16_t *)0x30000050;
+bool *const flag = (bool *)0x30000060;
+
+float robot_angle = 0.0;
+
+float imu_pos_x = 0.0;
+float imu_pos_y = 0.0;
+
+float imu_vel_x = 0.0;
+float imu_vel_y = 0.0;
+
 uint8_t ak8963_WhoAmI = 0;
 uint8_t mpu9250_WhoAmI = 0;
 MPU9250 mpu;
@@ -106,6 +129,7 @@ osThreadId_t Handle_Task_Steering;
 osThreadId_t Handle_Task_StateMachine;
 osThreadId_t Handle_Task_UART;
 osThreadId_t Handle_Task_MPU9250;
+osThreadId_t Handle_Task_SharedMem;
 osThreadId_t Handle_Task_Stanley;
 osThreadId_t Handle_Task_Blinkers;
 
@@ -139,6 +163,13 @@ const osThreadAttr_t Attributes_Task_MPU9250 = {
   .priority = (osPriority_t) osPriorityHigh,
 };
 
+// Shared Memory Thread
+const osThreadAttr_t Attributes_Task_SharedMem = {
+  .name = "Task_SharedMem",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+
 const osThreadAttr_t Attributes_Task_Stanley = {
   .name = "Task_Stanley",
   .stack_size = 128 * 8,
@@ -170,6 +201,7 @@ void Function_Task_Steering(void *argument);
 void Function_Task_StateMachine(void *argument);
 void Function_Task_UART(void *argument);
 void Function_Task_MPU9250(void *argument);
+void Function_Task_SharedMem(void *argument);
 void Function_Task_Stanley(void *argument);
 void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
@@ -188,6 +220,10 @@ void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	float_bytes->val_arr[0] = 0;
+	float_bytes->val_arr[1] = 0;
+	float_bytes->val_arr[2] = 0;
+	float_bytes->val_arr[3] = 0;
 
   /* USER CODE END 1 */
 /* USER CODE BEGIN Boot_Mode_Sequence_0 */
@@ -314,8 +350,10 @@ Error_Handler();
   Handle_Task_StateMachine = osThreadNew(Function_Task_StateMachine, NULL, &Attributes_Task_StateMachine);
   Handle_Task_UART         = osThreadNew(Function_Task_UART, NULL, &Attributes_Task_UART);
   Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250, NULL, &Attributes_Task_MPU9250);
+  Handle_Task_SharedMem      = osThreadNew(Function_Task_SharedMem, NULL, &Attributes_Task_SharedMem);
   Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers, NULL, &Attributes_Task_Blinkers);
   //Handle_Task_Stanley       = osThreadNew(Function_Task_Stanley, NULL, &Attributes_Task_Stanley);
+  
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -833,6 +871,10 @@ void Function_Task_UART(void *argument){
     /*printf("Accel: %.3f %.3f %.3f\r\n", AccData[0], AccData[1], AccData[2]);
     printf("Gyro: %.3f %.3f %.3f\r\n", GyroData[0], GyroData[1], GyroData[2]);
     printf("Mag: %.3f %.3f %.3ff\r\n", MagData[0], MagData[1],MagData[2]);*/
+   /* printf("%.3f %.3f %.3f", acce_list[0].mean, acce_list[1].mean, acce_list[2].mean);
+    printf(" %.3f %.3f %.3f", gyro_list[0].mean, gyro_list[1].mean, gyro_list[2].mean);
+    printf("%.3f %.3f %.3f\r\n", mag_list[0].mean, mag_list[1].mean,mag_list[2].mean);
+    printf("Robot angle: %.3f\r\n", robot_angle);*/
 
     //printf("%.3f %.3f %.3f", acce_list[0].mean, acce_list[1].mean, acce_list[2].mean);
     //printf(" %.3f %.3f %.3f", gyro_list[0].mean, gyro_list[1].mean, gyro_list[2].mean);
@@ -980,6 +1022,17 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
   MagOffset[1] = MagAccum[1] / num_samples;
   MagOffset[2] = MagAccum[2] / num_samples;
 
+}
+
+
+void Function_Task_SharedMem(void *argument){
+	bool flagW = false;
+	for(;;){
+		printf("%u %u %u\r\n", *x,*y,*z);
+
+		printf("%f\r\n", float_bytes->val);
+	osDelay(50);
+	}
 }
 
 /* USER CODE END 4 */
