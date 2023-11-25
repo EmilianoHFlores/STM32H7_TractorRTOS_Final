@@ -783,9 +783,7 @@ void Function_Task_Blinkers(void *argument){
 
 void Function_Task_Traction(void *argument){
   for(;;){
-	/*if(abs(traction_current - traction_setpoint) <= 0.01){
-		traction_current = traction_setpoint;
-	}else */if(traction_current < traction_setpoint){
+	if(traction_current < traction_setpoint){
 		traction_current += 0.01;
 	}else if(traction_current > traction_setpoint){
 		traction_current -= 0.01;
@@ -840,28 +838,40 @@ void Function_Task_StateMachine(void *argument){
 }
 
 void Function_Task_Stanley(void *argument){
-  // Gains
-  float debug_vel = 0.0f;
-  float k = 1.0f;
-  float ks = 0.01f;
-  
-  float local_x = 0.1f;
-  float local_y = 0.1f;
+  // Local velocity
+  float velocity = 0.0f; float delta_movement = 0.0f;
 
-  float cte = 0.0f;
-  float yaw_cte = 0.0f;
-  float M = 0.0;
-  float C = 0.0;
+  // Gains
+  float k = 1.0f; float ks = 0.01f;
+  
+  // Local cordinates
+  float local_x = 0.0f; float local_y = 0.0f; 
+
+  // Cross track error
+  float cte = 0.0f; float M = 0.0; float C = 0.0;
+
+  // Time variables
+  uint32_t prev_time = 0; uint32_t elapsed_time;
   for(;;){
+    velocity = float_bytes->val;
+    elapsed_time = HAL_GetTick() - prev_time;
+    delta_movement = velocity * (elapsed_time/1000.0f);
     //cte = (x2_desired - x1_desired)*(y - y1_desired) - (y2_desired - y1_desired)*(x - x1_desired); // Calculate cross track
+    
+    local_x += delta_movement * cosf(psi);
+    local_y += delta_movement * sinf(psi);
+
     M = (y2_desired - y1_desired)/(x2_desired - x1_desired);
     C = y1_desired - M*x1_desired;
     cte = abs(M*local_x  - local_y + C)/sqrt(M*M + 1);
-    steering_delta = psi + ((180.0/M_PI) * (atan2f(k*cte, ks + debug_vel))); // Calculate steering with radian conversion
+    
+    steering_delta = psi + ((180.0/M_PI) * (atan2f(k*cte, ks + velocity))); // Calculate steering with radian conversion
     steering_delta = (steering_delta > steering_max) ? steering_max : (steering_delta < steering_min) ? steering_min : steering_delta; // Evil steering limiting
     steering_delta = (steering_delta + 60) / 120; 
 
     //printf("cte: %.3f\r\n", cte);
+
+    prev_time = HAL_GetTick();
 
     osDelay(100);
   }
@@ -874,46 +884,11 @@ void Function_Task_UART(void *argument){
   uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-    //printf("Hello World!\r\n");
-    /*printf("Accel: %.2f %.2f %.2f\r\n", mpu.accel_x, mpu.accel_y, mpu.accel_z);
-    printf("Gyro: %.2f %.2f %.2f\r\n", mpu.gyro_x, mpu.gyro_y, mpu.gyro_z);
-    printf("Mag: %.2f %.2f %.2f\r\n", mpu.mag_x, mpu.mag_y, mpu.mag_z);*/
-    /*printf("Accel: %d %d %d\r\n", AccData[0], AccData[1], AccData[2]);
-	  printf("Gyro: %d %d %d\r\n", GyroData[0], GyroData[1], GyroData[2]);
-	  printf("Mag: %d %d %df\r\n", MagData[0], MagData[1],MagData[2]);*/
-    /*printf("Accel: %.3f %.3f %.3f\r\n", AccData[0], AccData[1], AccData[2]);
-    printf("Gyro: %.3f %.3f %.3f\r\n", GyroData[0], GyroData[1], GyroData[2]);
-    printf("Mag: %.3f %.3f %.3ff\r\n", MagData[0], MagData[1],MagData[2]);*/
-   /* printf("%.3f %.3f %.3f", acce_list[0].mean, acce_list[1].mean, acce_list[2].mean);
-    printf(" %.3f %.3f %.3f", gyro_list[0].mean, gyro_list[1].mean, gyro_list[2].mean);
-    printf("%.3f %.3f %.3f\r\n", mag_list[0].mean, mag_list[1].mean,mag_list[2].mean);
-    printf("Robot angle: %.3f\r\n", robot_angle);*/
 
-    //printf("%.3f %.3f %.3f", acce_list[0].mean, acce_list[1].mean, acce_list[2].mean);
-    //printf(" %.3f %.3f %.3f", gyro_list[0].mean, gyro_list[1].mean, gyro_list[2].mean);
-    //printf("%.3f %.3f %.3f\r\n", mag_list[0].mean, mag_list[1].mean,mag_list[2].mean);
-
-
-
-    printf("Stanley Steering: %.3f\r\n", steering_delta);
-    printf("State: V:%.3f Psi:%.3f\r\n", v, psi);
-
-
-
-    //cte2 = (x2_desired - x1_desired)*(y - y1_desired) - (y2_desired - y1_desired)*(x - x1_desired);
-    //printf("cte2: %.3f\r\n", cte2);
+    //printf("Stanley Steering: %.3f\r\n", steering_delta);
+    //printf("State: V:%.3f Psi:%.3f\r\n", float_bytes->val, psi);
    
-
-    /*angAcc = (180*atan((acce_list[1].mean/acce_list[0].mean)))/ (M_PI);
-    angGyro = (gyro_list[0].mean * time_sample) + angPond;
-    angPond = (angAcc * alpha) + (angGyro * (1 - alpha));*/
-
-    //angPond = (angPond < 0) ? angPond + 360.0 : (angPond > 360.0) ? angPond - 360.0 : angPond;
-
-
-    //printf("%.3f %.3f %.3f\r\n",angPond, angAcc, angGyro);
-
-     // print to bluetooth huart1
+    // print to bluetooth huart1
     nbytes = sprintf(bt_msg, "Robot angle: %.3f\r\n", psi);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, 100);
 
@@ -929,30 +904,15 @@ void Function_Task_MPU9250(void *argument){
     //while (HAL_GetTick() - prevtime < time_sample_s * 1000);
 
     // print elapsed time
-	elapsed_time = HAL_GetTick() - prevtime;
-	// update robot angle with gyro
-	if (abs(gyro_list[2].mean) > 1){
-		psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
-	}
+    elapsed_time = HAL_GetTick() - prevtime;
+    // update robot angle with gyro
+    if (abs(gyro_list[2].mean) > 1){
+      psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
+    }
 
     // printf("Elapsed time: %d\r\n", elapsed_time);
     
     prevtime = HAL_GetTick();
-
-		//mpu9250_update_accel_gyro(&mpu);
-
-
-		/*MPU9250_GetData(AccData, GyroData, MagData);
-
-		mpu.accel_x = AccData[0];
-		mpu.accel_y = AccData[1];
-		mpu.accel_z = AccData[2];
-		mpu.gyro_x = GyroData[0];
-		mpu.gyro_y = GyroData[1];
-		mpu.gyro_z = GyroData[2];
-		mpu.mag_x = MagData[0];
-		mpu.mag_y = MagData[1];
-		mpu.mag_z = MagData[2];*/
 
 		ak8963_WhoAmI = mpu_r_ak8963_WhoAmI(&mpu);
 		mpu9250_WhoAmI = mpu_r_WhoAmI(&mpu);
@@ -960,27 +920,9 @@ void Function_Task_MPU9250(void *argument){
 		MPU9250_ReadGyro(&mpu);
 		MPU9250_ReadMag(&mpu);
 
-		//push_back(&acce_list[0], mpu.mpu_data.Accel[0] - AccOffset[0]);
-		//push_back(&acce_list[1], mpu.mpu_data.Accel[1] - AccOffset[1]);
-		//push_back(&acce_list[2], mpu.mpu_data.Accel[2] - AccOffset[2]);
 		push_back(&gyro_list[0], mpu.mpu_data.Gyro[0] - GyroOffset[0]);
 		push_back(&gyro_list[1], mpu.mpu_data.Gyro[1] - GyroOffset[1]);
 		push_back(&gyro_list[2], mpu.mpu_data.Gyro[2] - GyroOffset[2]);
-		//push_back(&mag_list[0], mpu.mpu_data.Magn[0] - MagOffset[0]);
-		//push_back(&mag_list[1], mpu.mpu_data.Magn[1] - MagOffset[1]);
-		//push_back(&mag_list[2], mpu.mpu_data.Magn[2] - MagOffset[2]);
-    
-		/*
-		AccData[0] = mpu.mpu_data.Accel[0] - AccOffset[0];
-		AccData[1] = mpu.mpu_data.Accel[1] - AccOffset[1];
-		AccData[2] = mpu.mpu_data.Accel[2] - AccOffset[2];
-		GyroData[0] = mpu.mpu_data.Gyro[0] - GyroOffset[0];
-		GyroData[1] = mpu.mpu_data.Gyro[1] - GyroOffset[1];
-		GyroData[2] = mpu.mpu_data.Gyro[2] - GyroOffset[2];
-		MagData[0] = mpu.mpu_data.Magn[0] - MagOffset[0];
-		MagData[1] = mpu.mpu_data.Magn[1] - MagOffset[1];
-		MagData[2] = mpu.mpu_data.Magn[2] - MagOffset[2];
-		*/
 
 		uint32_t os_delay = time_sample_s*1000 - (HAL_GetTick() - prevtime);
 
