@@ -105,10 +105,6 @@ uint8_t mpu9250_WhoAmI = 0;
 MPU9250 mpu;
 
 // State variables
-float u = 0.2;   // Longitudinal velocity
-float v = 0.0;   // Lateral velocity
-float x = 0.01;   // X position
-float y = 0.01;   // Y position
 float psi = 0; // Global yaw angle
 
 // Stanley variables
@@ -119,6 +115,7 @@ float y2_desired = 0; // Desired y coordinate of the end of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
+float steering_angle = 0.0f; // Global steering angle
 float steering_max = 120.0f;     // Maximum steering angle
 float steering_min = 0.0f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
@@ -834,19 +831,25 @@ void Function_Task_StateMachine(void *argument){
 
 void Function_Task_Stanley(void *argument){
   // Gains
+  float debug_vel = 0.0f;
   float k = 1.0f;
-  float ks = 0.0f;
+  float ks = 0.01f;
   
   float local_x = 0.1f;
   float local_y = 0.1f;
 
   float cte = 0.0f;
-
+  float yaw_cte = 0.0f;
+  float M = 0.0;
+  float C = 0.0;
   for(;;){
     //cte = (x2_desired - x1_desired)*(y - y1_desired) - (y2_desired - y1_desired)*(x - x1_desired); // Calculate cross track
-    cte = (x2_desired - x1_desired)*(local_y - y1_desired) - (y2_desired - y1_desired)*(local_x - x1_desired); // Calculate cross track
-    steering_delta = psi + ((180.0/M_PI) * (atan2f(k*cte, ks + u))); // Calculate steering with radian conversion
+    M = (y2_desired - y1_desired)/(x2_desired - x1_desired);
+    C = y1_desired - M*x1_desired;
+    cte = abs(M*local_x  - local_y + C)/sqrt(M*M + 1);
+    steering_delta = psi + ((180.0/M_PI) * (atan2f(k*cte, ks + debug_vel))); // Calculate steering with radian conversion
     steering_delta = (steering_delta > steering_max) ? steering_max : (steering_delta < steering_min) ? steering_min : steering_delta; // Evil steering limiting
+    steering_delta = (steering_delta + 60) / 120; 
 
     //printf("cte: %.3f\r\n", cte);
 
@@ -854,7 +857,7 @@ void Function_Task_Stanley(void *argument){
   }
 }
 
-void Function_Task_UART(void *argument){
+void Function_Task_UART(void *argument){  
   double angAcc = 0, angGyro = 0, angPond = 0, time_sample = 0.05, alpha = 0.1;
   char bt_msg[100];
   float cte2;
@@ -883,7 +886,7 @@ void Function_Task_UART(void *argument){
 
 
     printf("Stanley Steering: %.3f\r\n", steering_delta);
-    printf("State: X:%.3f Y:%.3f U:%.3f V:%.3f Psi:%.3f\r\n", x, y, u, v, psi);
+    printf("State: V:%.3f Psi:%.3f\r\n", v, psi);
 
 
 
@@ -922,18 +925,6 @@ void Function_Task_MPU9250(void *argument){
 		psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
 	}
 
-  // update position with accel
-
-  if (abs(acce_list[0].mean) > 1){
-    u += (acce_list[0].mean * elapsed_time/1000);
-  }
-  if (abs(acce_list[1].mean) > 1){
-    v += (acce_list[1].mean * elapsed_time/1000);
-  }
-
-  x += u * elapsed_time/1000;
-  y += v * elapsed_time/1000;
-
     // printf("Elapsed time: %d\r\n", elapsed_time);
     
     prevtime = HAL_GetTick();
@@ -959,9 +950,9 @@ void Function_Task_MPU9250(void *argument){
 		MPU9250_ReadGyro(&mpu);
 		MPU9250_ReadMag(&mpu);
 
-		push_back(&acce_list[0], mpu.mpu_data.Accel[0] - AccOffset[0]);
-		push_back(&acce_list[1], mpu.mpu_data.Accel[1] - AccOffset[1]);
-		push_back(&acce_list[2], mpu.mpu_data.Accel[2] - AccOffset[2]);
+		//push_back(&acce_list[0], mpu.mpu_data.Accel[0] - AccOffset[0]);
+		//push_back(&acce_list[1], mpu.mpu_data.Accel[1] - AccOffset[1]);
+		//push_back(&acce_list[2], mpu.mpu_data.Accel[2] - AccOffset[2]);
 		push_back(&gyro_list[0], mpu.mpu_data.Gyro[0] - GyroOffset[0]);
 		push_back(&gyro_list[1], mpu.mpu_data.Gyro[1] - GyroOffset[1]);
 		push_back(&gyro_list[2], mpu.mpu_data.Gyro[2] - GyroOffset[2]);
