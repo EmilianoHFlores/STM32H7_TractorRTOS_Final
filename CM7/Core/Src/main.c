@@ -90,10 +90,12 @@ float y1_desired = 0; // Desired y coordinate of the start of the ref line
 float x2_desired = 40; // Desired x coordinate of the end of the ref line
 float y2_desired = 0; // Desired y coordinate of the end of the ref line
 static float traction_setpoint; // Desired traction
+static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
 float steering_max = 120.0f;     // Maximum steering angle
 float steering_min = 0.0f;     // Minimum steering angle
+uint8_t blinker_mode = 0;
 
 
 osThreadId_t Handle_Task_Traction;
@@ -102,11 +104,12 @@ osThreadId_t Handle_Task_StateMachine;
 osThreadId_t Handle_Task_UART;
 osThreadId_t Handle_Task_MPU9250;
 osThreadId_t Handle_Task_Stanley;
+osThreadId_t Handle_Task_Blinkers;
 
 const osThreadAttr_t Attributes_Task_Traction = {
-  .name = "Action_TractionSetpoint",
+  .name = "Task_Traction",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
 const osThreadAttr_t Attributes_Task_Steering = {
@@ -118,13 +121,13 @@ const osThreadAttr_t Attributes_Task_Steering = {
 const osThreadAttr_t Attributes_Task_StateMachine = {
   .name = "Task_StateMachine",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityAboveNormal,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 
 const osThreadAttr_t Attributes_Task_UART = {
   .name = "Task_UART",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityBelowNormal,
 };
 
 const osThreadAttr_t Attributes_Task_MPU9250 = {
@@ -135,6 +138,12 @@ const osThreadAttr_t Attributes_Task_MPU9250 = {
 
 const osThreadAttr_t Attributes_Task_Stanley = {
   .name = "Task_Stanley",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t Attributes_Task_Blinkers = {
+  .name = "Task_Traction",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -159,6 +168,7 @@ void Function_Task_StateMachine(void *argument);
 void Function_Task_UART(void *argument);
 void Function_Task_MPU9250(void *argument);
 void Function_Task_Stanley(void *argument);
+void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
 void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
 /* USER CODE END PFP */
@@ -236,6 +246,23 @@ Error_Handler();
   MX_SPI3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(2000);
+  TIM13->CCR1 = (uint32_t)(63999*0.075);
+  TIM14->CCR1 = (uint32_t)(63999*0.075);
+  HAL_Delay(2000);
+  TIM13->CCR1 = (uint32_t)(63999*0.1);
+  TIM14->CCR1 = (uint32_t)(63999*0.1);
+  HAL_Delay(500);
+  //TIM13->CCR1 = (uint32_t)(63999*0.075);
+  //TIM14->CCR1 = (uint32_t)(63999*0.075);
+  //HAL_Delay(500);
+  TIM13->CCR1 = (uint32_t)(63999*0.05);
+  TIM14->CCR1 = (uint32_t)(63999*0.05);
+  HAL_Delay(500);
+  TIM13->CCR1 = (uint32_t)(63999*0.075);
+  TIM14->CCR1 = (uint32_t)(63999*0.075);
+
+
   printf("Initializing MPU...\r\n");
 
   for (int i = 0; i < 3; i++) {
@@ -284,6 +311,7 @@ Error_Handler();
   Handle_Task_StateMachine = osThreadNew(Function_Task_StateMachine, NULL, &Attributes_Task_StateMachine);
   Handle_Task_UART         = osThreadNew(Function_Task_UART, NULL, &Attributes_Task_UART);
   Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250, NULL, &Attributes_Task_MPU9250);
+  Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers, NULL, &Attributes_Task_Blinkers);
   //Handle_Task_Stanley       = osThreadNew(Function_Task_Stanley, NULL, &Attributes_Task_Stanley);
   /* USER CODE END RTOS_THREADS */
 
@@ -478,6 +506,7 @@ static void MX_TIM13_Init(void)
   TIM13->PSC = 74;
   TIM13->CCR1 = (uint32_t)(63999*0.075);
   traction_setpoint = 0.5f;
+  traction_current = 0.5f;
   HAL_TIM_PWM_Start(&htim13, TIM_CHANNEL_1);
 
   /* USER CODE END TIM13_Init 2 */
@@ -555,7 +584,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -656,7 +685,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SPI3_CS_GPIO_Port, SPI3_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|H_IN_1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|Left_Blinker_Pin|Right_Blinker_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B2_Pin */
   GPIO_InitStruct.Pin = B2_Pin;
@@ -671,8 +700,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI3_CS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD1_Pin LD3_Pin H_IN_1_Pin */
-  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|H_IN_1_Pin;
+  /*Configure GPIO pins : LD1_Pin LD3_Pin Left_Blinker_Pin Right_Blinker_Pin */
+  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|Left_Blinker_Pin|Right_Blinker_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -682,10 +711,39 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void Function_Task_Blinkers(void *argument){
+  for(;;){
+    if(blinker_mode == 0){
+    	HAL_GPIO_WritePin(Left_Blinker_GPIO_Port, Left_Blinker_Pin, GPIO_PIN_RESET);
+    	HAL_GPIO_WritePin(Right_Blinker_GPIO_Port, Right_Blinker_Pin, GPIO_PIN_RESET);
+    }else if(blinker_mode == 1){
+    	HAL_GPIO_TogglePin(Left_Blinker_GPIO_Port, Left_Blinker_Pin);
+    	HAL_GPIO_TogglePin(Right_Blinker_GPIO_Port, Right_Blinker_Pin);
+    }else if(blinker_mode == 2){
+    	HAL_GPIO_TogglePin(Left_Blinker_GPIO_Port, Left_Blinker_Pin);
+    	HAL_GPIO_WritePin(Right_Blinker_GPIO_Port, Right_Blinker_Pin, GPIO_PIN_RESET);
+    }else if(blinker_mode == 3){
+    	HAL_GPIO_WritePin(Left_Blinker_GPIO_Port, Left_Blinker_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_TogglePin(Right_Blinker_GPIO_Port, Right_Blinker_Pin);
+    }else{
+    	HAL_GPIO_WritePin(Left_Blinker_GPIO_Port, Left_Blinker_Pin, GPIO_PIN_SET);
+    	HAL_GPIO_WritePin(Right_Blinker_GPIO_Port, Right_Blinker_Pin, GPIO_PIN_SET);
+    }
+    osDelay(500);
+  }
+}
+
 void Function_Task_Traction(void *argument){
   for(;;){
-    TIM14->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*traction_setpoint));
-    osDelay(50);
+	/*if(abs(traction_current - traction_setpoint) <= 0.01){
+		traction_current = traction_setpoint;
+	}else */if(traction_current < traction_setpoint){
+		traction_current += 0.01;
+	}else if(traction_current > traction_setpoint){
+		traction_current -= 0.01;
+	}
+    TIM14->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*traction_current));
+    osDelay(10);
   }
 }
 
@@ -701,21 +759,29 @@ void Function_Task_StateMachine(void *argument){
   for(;;){
     if(state == 0){
         steering_delta = 0.5f;
-        traction_setpoint = 0.70f;
+        traction_setpoint = 1.0f;
+        blinker_mode = 0;
         HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
         osDelay(3000);
         state = 1;
       }else if(state == 1){
         steering_delta = 0.75f;
-        traction_setpoint = 0.20f;
+        //traction_setpoint = 1.0f;
+        traction_setpoint = 0.8f;
+        blinker_mode = 2;
         HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
         osDelay(3000);
-        steering_delta = 0.25f;
+        //traction_setpoint = 0.2f;
+        steering_delta = 0.30f;
+        blinker_mode = 3;
         osDelay(3000);
         state = 2;
       }else if(state == 2){
         steering_delta = 0.5f;
-        traction_setpoint = 0.70f;
+        //traction_setpoint = 0.5f;
+        //osDelay(100);
+        traction_setpoint = 0.10f;
+        blinker_mode = 1;
         HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
         osDelay(3000);
         state = 0;
@@ -757,6 +823,7 @@ void Function_Task_UART(void *argument){
   double angAcc = 0, angGyro = 0, angPond = 0, time_sample = 0.05, alpha = 0.1;
   char bt_msg[100];
   float cte2;
+  uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
     //printf("Hello World!\r\n");
@@ -795,8 +862,8 @@ void Function_Task_UART(void *argument){
     //printf("%.3f %.3f %.3f\r\n",angPond, angAcc, angGyro);
 
      // print to bluetooth huart1
-    sprintf(bt_msg, "Robot angle: %.3f\r\n", psi);
-    HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, strlen(bt_msg), 100);
+    nbytes = sprintf(bt_msg, "Robot angle: %.3f\r\n", psi);
+    HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, 100);
 
     osDelay(50);
   }
