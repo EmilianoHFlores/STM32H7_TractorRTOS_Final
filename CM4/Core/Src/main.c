@@ -425,6 +425,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -481,21 +482,16 @@ void Function_Task_IndicatorLED(void *argument){
 
 void Function_Task_Wireless(void *argument){
 	*flag = false;
-		*x = 1;
+		/**x = 1;
 				 *y = 200;
-				 *z = 1;
+				 *z = 1;*/
 		for(;;){
-	    //NRF24_read(myRxData, 32);
+	    NRF24_read(myRxData, 32);
 	    //osMutexAcquire(mutex_id_Wireless, 1000);
-	    /**x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+	    *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
 	    *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
-		*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
-	 /*   *x = 1;
-	    *y = 652;
-	    *z = 200;
-		*flag = !(*flag);
-	    osMutexRelease(mutex_id_Wireless);*/
-
+		*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+	/*
 			*x += 1;
 			 *y += 1;
 			 *z += 1;
@@ -503,7 +499,7 @@ void Function_Task_Wireless(void *argument){
 			*x = 1;
 			*y=200;
 			*z = 300;
-		}
+		}*/
 		//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
 		osDelay(1000);
   }
