@@ -108,16 +108,16 @@ MPU9250 mpu;
 float psi = 0; // Global yaw angle
 
 // Stanley variables
-float x1_desired = 0; // Desired x coordinate of the start of the ref line
-float y1_desired = 0; // Desired y coordinate of the start of the ref line
-float x2_desired = 40; // Desired x coordinate of the end of the ref line
-float y2_desired = 0; // Desired y coordinate of the end of the ref line
+float x_desired = 40; // Desired x coordinate of the start of the ref line
+float y_desired = 40; // Desired y coordinate of the start of the ref line
+//float x2_desired = 40; // Desired x coordinate of the end of the ref line
+//float y2_desired = 0; // Desired y coordinate of the end of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
-float steering_max = 120.0f;     // Maximum steering angle
-float steering_min = 0.0f;     // Minimum steering angle
+float steering_max = 0.85f;     // Maximum steering angle
+float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
 
 
@@ -126,7 +126,7 @@ osThreadId_t Handle_Task_Steering;
 osThreadId_t Handle_Task_StateMachine;
 osThreadId_t Handle_Task_UART;
 osThreadId_t Handle_Task_MPU9250;
-osThreadId_t Handle_Task_SharedMem;
+osThreadId_t Handle_Task_LateralP;
 osThreadId_t Handle_Task_Stanley;
 osThreadId_t Handle_Task_Blinkers;
 
@@ -161,7 +161,7 @@ const osThreadAttr_t Attributes_Task_MPU9250 = {
 };
 
 // Shared Memory Thread
-const osThreadAttr_t Attributes_Task_SharedMem = {
+const osThreadAttr_t Attributes_Task_LateralP = {
   .name = "Task_SharedMem",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityAboveNormal,
@@ -198,7 +198,7 @@ void Function_Task_Steering(void *argument);
 void Function_Task_StateMachine(void *argument);
 void Function_Task_UART(void *argument);
 void Function_Task_MPU9250(void *argument);
-void Function_Task_SharedMem(void *argument);
+void Function_Task_LateralP(void *argument);
 void Function_Task_Stanley(void *argument);
 void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
@@ -347,7 +347,7 @@ Error_Handler();
   Handle_Task_StateMachine = osThreadNew(Function_Task_StateMachine, NULL, &Attributes_Task_StateMachine);
   Handle_Task_UART         = osThreadNew(Function_Task_UART, NULL, &Attributes_Task_UART);
   Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250, NULL, &Attributes_Task_MPU9250);
-  Handle_Task_SharedMem      = osThreadNew(Function_Task_SharedMem, NULL, &Attributes_Task_SharedMem);
+  Handle_Task_LateralP      = osThreadNew(Function_Task_LateralP, NULL, &Attributes_Task_LateralP);
   Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers, NULL, &Attributes_Task_Blinkers);
   //Handle_Task_Stanley       = osThreadNew(Function_Task_Stanley, NULL, &Attributes_Task_Stanley);
   
@@ -804,46 +804,21 @@ void Function_Task_Traction(void *argument){
 }
 
 void Function_Task_Steering(void *argument){
-    for(;;){
+    for(;;){ 
       TIM13->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*steering_delta));
       osDelay(50);
     }
 }
 
 void Function_Task_StateMachine(void *argument){
-  uint8_t state = 0;
   for(;;){
-    if(state == 0){
-        steering_delta = 0.5f;
-        traction_setpoint = 1.0f;
-        blinker_mode = 0;
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-        osDelay(3000);
-        state = 1;
-      }else if(state == 1){
-        steering_delta = 0.75f;
-        //traction_setpoint = 1.0f;
-        traction_setpoint = 0.8f;
-        blinker_mode = 2;
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-        osDelay(3000);
-        //traction_setpoint = 0.2f;
-        steering_delta = 0.30f;
-        blinker_mode = 3;
-        osDelay(3000);
-        state = 2;
-      }else if(state == 2){
-        steering_delta = 0.5f;
-        //traction_setpoint = 0.5f;
-        //osDelay(100);
-        traction_setpoint = 0.10f;
-        blinker_mode = 1;
-        HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-        osDelay(3000);
-        state = 0;
-      }else{
-        state = 0;
-      }
+    traction_setpoint = 1.0f;
+    blinker_mode = 0;
+    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+    osDelay(3000);
+    traction_setpoint = 0.0f;
+    blinker_mode = 3;
+    osDelay(1000);
   }
 }
 
@@ -861,7 +836,7 @@ void Function_Task_Stanley(void *argument){
   float cte = 0.0f; float M = 0.0; float C = 0.0;
 
   // Time variables
-  uint32_t prev_time = 0; uint32_t elapsed_time;
+  /*uint32_t prev_time = 0; uint32_t elapsed_time;
   for(;;){
     velocity = float_bytes->val;
     elapsed_time = HAL_GetTick() - prev_time;
@@ -884,12 +859,12 @@ void Function_Task_Stanley(void *argument){
     prev_time = HAL_GetTick();
 
     osDelay(100);
-  }
+  }*/
 }
 
 void Function_Task_UART(void *argument){  
   double angAcc = 0, angGyro = 0, angPond = 0, time_sample = 0.05, alpha = 0.1;
-  char bt_msg[100];
+  char bt_msg[300];
   float cte2;
   uint8_t nbytes;
   for(;;){
@@ -897,9 +872,9 @@ void Function_Task_UART(void *argument){
 
     //printf("Stanley Steering: %.3f\r\n", steering_delta);
     //printf("State: V:%.3f Psi:%.3f\r\n", float_bytes->val, psi);
-   
+   float error = ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) - psi;
     // print to bluetooth huart1
-    nbytes = sprintf(bt_msg, "Robot angle: %.3f\r\n", psi);
+    nbytes = sprintf(bt_msg, "Psi: %.3f Delta: %.3f Error: %.3f \r\n", psi, steering_delta, error);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, 100);
 
     osDelay(50);
@@ -978,13 +953,18 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
 }
 
 
-void Function_Task_SharedMem(void *argument){
-	bool flagW = false;
+void Function_Task_LateralP(void *argument){
+  float error = 0, kp = 2;
 	for(;;){
-		printf("%u %u %u\r\n", *x,*y,*z);
-
-		printf("%f\r\n", float_bytes->val);
-	osDelay(50);
+    // calculate angle of difference between desired point and current position
+    error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
+    steering_delta = (abs(error) < 2) ? 0.5 : (error*kp+60)/120;
+    if(steering_delta > steering_max){
+        steering_delta = steering_max;
+      }else if(steering_delta < steering_min){
+        steering_delta = steering_min;
+    }
+	  osDelay(50);
 	}
 }
 
