@@ -488,9 +488,19 @@ void Function_Task_Wireless(void *argument){
 		for(;;){
 	    NRF24_read(myRxData, 32);
 	    //osMutexAcquire(mutex_id_Wireless, 1000);
+	    if ((((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1]) < 500){
+	      *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+	    }
+	    if ((((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3]) < 500){
+	    	      *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+	    	    }
+	    if ((((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5]) < 500){
+	    	      *z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+	    	    }
+	    /*
 	    *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
 	    *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
-		*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+		*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
 	/*
 			*x += 1;
 			 *y += 1;

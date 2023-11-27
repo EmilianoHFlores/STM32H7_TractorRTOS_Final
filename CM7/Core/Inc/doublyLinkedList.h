@@ -14,6 +14,18 @@ struct Node {
     struct Node* prev;
 };
 
+struct NodeCord {
+    double x, y;
+    struct NodeCord* next;
+    struct NodeCord* prev;
+};
+
+struct doubleLinkedListCord {
+    int size;
+    struct NodeCord* head;
+    struct NodeCord* tail;
+};
+
 struct doubleLinkedList {
     int size;
     int maxSize;
@@ -24,8 +36,11 @@ struct doubleLinkedList {
 };
 
 void DBLL_init(struct doubleLinkedList* list, int n);
+void c_DBLL_init(struct doubleLinkedListCord* list);
 void pop_front(struct doubleLinkedList* list);
+void c_pop_front(struct doubleLinkedListCord* list);
 void push_back(struct doubleLinkedList* list, double data);
+void c_push_back(struct doubleLinkedListCord* list, double x, double y);
 void traverse(struct doubleLinkedList* list);
 
 #endif /* __DOUBLYLINKEDLIST_H */

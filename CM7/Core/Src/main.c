@@ -73,8 +73,7 @@ float AccOffset[3] = {0.0f, 0.0f, 0.0f};
 float GyroOffset[3] = {0.0f, 0.0f, 0.0f};
 float MagOffset[3] = {0.0f, 0.0f, 0.0f};
 struct doubleLinkedList gyro_list[3];
-struct doubleLinkedList acce_list[3];
-struct doubleLinkedList mag_list[3];
+struct doubleLinkedListCord cord_list;
 int n_window = 10;
 
 union bytes_to_float{
@@ -83,14 +82,12 @@ union bytes_to_float{
 };
 union bytes_to_float *float_bytes = (union bytes_to_float *)0x30000000;
 
-/*float_bytes.val_arr[0] = 0,
-float_bytes.val_arr[1] = 0,
-float_bytes.val_arr[2] = 0,
-float_bytes.val_arr[3] = 0;*/
 uint16_t *const x = (uint16_t *)0x30000030;
 uint16_t *const y = (uint16_t *)0x30000040;
 uint16_t *const z = (uint16_t *)0x30000050;
 bool *const flag = (bool *)0x30000060;
+
+bool cord_flag = false;
 
 float robot_angle = 0.0;
 
@@ -100,6 +97,8 @@ float imu_pos_y = 0.0;
 float imu_vel_x = 0.0;
 float imu_vel_y = 0.0;
 
+float distance_to_wp = 0.0;
+
 uint8_t ak8963_WhoAmI = 0;
 uint8_t mpu9250_WhoAmI = 0;
 MPU9250 mpu;
@@ -108,10 +107,8 @@ MPU9250 mpu;
 float psi = 0; // Global yaw angle
 
 // Stanley variables
-float x_desired = 40; // Desired x coordinate of the start of the ref line
-float y_desired = 40; // Desired y coordinate of the start of the ref line
-//float x2_desired = 40; // Desired x coordinate of the end of the ref line
-//float y2_desired = 0; // Desired y coordinate of the end of the ref line
+float x_desired = 0; // Desired x coordinate of the start of the ref line
+float y_desired = 0; // Desired y coordinate of the start of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
@@ -123,7 +120,7 @@ uint8_t blinker_mode = 0;
 
 osThreadId_t Handle_Task_Traction;
 osThreadId_t Handle_Task_Steering;
-osThreadId_t Handle_Task_StateMachine;
+osThreadId_t Handle_Task_Navigation;
 osThreadId_t Handle_Task_UART;
 osThreadId_t Handle_Task_MPU9250;
 osThreadId_t Handle_Task_LateralP;
@@ -142,7 +139,7 @@ const osThreadAttr_t Attributes_Task_Steering = {
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
-const osThreadAttr_t Attributes_Task_StateMachine = {
+const osThreadAttr_t Attributes_Task_Navigation = {
   .name = "Task_StateMachine",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
@@ -158,19 +155,6 @@ const osThreadAttr_t Attributes_Task_MPU9250 = {
   .name = "Task_MPU9250",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityHigh,
-};
-
-// Shared Memory Thread
-const osThreadAttr_t Attributes_Task_LateralP = {
-  .name = "Task_SharedMem",
-  .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityAboveNormal,
-};
-
-const osThreadAttr_t Attributes_Task_Stanley = {
-  .name = "Task_Stanley",
-  .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
 };
 
 const osThreadAttr_t Attributes_Task_Blinkers = {
@@ -195,7 +179,7 @@ void StartDefaultTask(void *argument);
 /* USER CODE BEGIN PFP */
 void Function_Task_Traction(void *argument);
 void Function_Task_Steering(void *argument);
-void Function_Task_StateMachine(void *argument);
+void Function_Task_Navigation(void *argument);
 void Function_Task_UART(void *argument);
 void Function_Task_MPU9250(void *argument);
 void Function_Task_LateralP(void *argument);
@@ -303,9 +287,16 @@ Error_Handler();
 
   for (int i = 0; i < 3; i++) {
     DBLL_init(&gyro_list[i], n_window);
-    DBLL_init(&acce_list[i], n_window);
-    DBLL_init(&mag_list[i], n_window);
+    //DBLL_init(&acce_list[i], n_window);
+    //DBLL_init(&mag_list[i], n_window);
   }
+
+  c_DBLL_init(&cord_list);
+
+  c_push_back(&cord_list, 115, 15);
+  c_push_back(&cord_list, 160, 75);
+  c_push_back(&cord_list, 120, 145);
+  c_push_back(&cord_list, 46, 100);
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -342,13 +333,12 @@ Error_Handler();
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  Handle_Task_Steering     = osThreadNew(Function_Task_Steering, NULL, &Attributes_Task_Steering);
-  Handle_Task_Traction     = osThreadNew(Function_Task_Traction, NULL, &Attributes_Task_Traction);
-  Handle_Task_StateMachine = osThreadNew(Function_Task_StateMachine, NULL, &Attributes_Task_StateMachine);
-  Handle_Task_UART         = osThreadNew(Function_Task_UART, NULL, &Attributes_Task_UART);
-  Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250, NULL, &Attributes_Task_MPU9250);
-  Handle_Task_LateralP      = osThreadNew(Function_Task_LateralP, NULL, &Attributes_Task_LateralP);
-  Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers, NULL, &Attributes_Task_Blinkers);
+  Handle_Task_Steering     = osThreadNew(Function_Task_Steering,   NULL, &Attributes_Task_Steering);
+  Handle_Task_Traction     = osThreadNew(Function_Task_Traction,   NULL, &Attributes_Task_Traction);
+  Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
+  Handle_Task_UART         = osThreadNew(Function_Task_UART,       NULL, &Attributes_Task_UART);
+  Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250,    NULL, &Attributes_Task_MPU9250);
+  Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers,   NULL, &Attributes_Task_Blinkers);
   //Handle_Task_Stanley       = osThreadNew(Function_Task_Stanley, NULL, &Attributes_Task_Stanley);
   
   /* USER CODE END RTOS_THREADS */
@@ -792,90 +782,98 @@ void Function_Task_Blinkers(void *argument){
 }
 
 void Function_Task_Traction(void *argument){
+  float kp = 10, velocity = 0, delta_movement = 0, local_x = 0.0f,  local_y = 0.0f;
+  uint32_t prev_time = 0, elapsed_time = 0;
   for(;;){
-	if(traction_current < traction_setpoint){
-		traction_current += 0.01;
-	}else if(traction_current > traction_setpoint){
-		traction_current -= 0.01;
-	}
+	// x y encoder estimation
+	velocity = float_bytes->val;
+	elapsed_time = HAL_GetTick() - prev_time;
+	delta_movement = velocity * (elapsed_time/1000.0f);
+	local_x += delta_movement * cosf(psi);
+	local_y += delta_movement * sinf(psi);
+    // P control
+	//distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
+	distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Camara
+	traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
+	printf("%f\r\n", distance_to_wp);
+    // Saturation
+	traction_setpoint = 0.7;
+    traction_setpoint = (traction_setpoint > 1) ? 1 : traction_setpoint;
+	  if(traction_current < traction_setpoint){
+		  traction_current += 0.01;
+	  }else if(traction_current > traction_setpoint){
+		  traction_current -= 0.01;
+	  }
+    // Update PWM
     TIM14->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*traction_current));
+
+	cord_flag = (distance_to_wp < 25) ? false : true;
+    prev_time = HAL_GetTick();
     osDelay(10);
   }
 }
 
 void Function_Task_Steering(void *argument){
+  float error = 0, kp = 2;
     for(;;){ 
+      // Blinkers
+      if (steering_delta < 0.4){
+        blinker_mode = 2;
+      } else if (steering_delta > 0.6){
+        blinker_mode = 3;
+      } else {
+        blinker_mode = 1;
+      }
+      // P control
+      /*if (y_desired < (*y)){
+    	  error = psi - ((180/M_PI) * atan2f(x_desired - (*x), y_desired - (*y)));
+      }else{
+    	  error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
+      }*/
+      error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
+      if (y_desired < *y) error *= -1;
+      steering_delta = (abs(error) < 2) ? 0.5 : ((error*kp+60)/120);
+      // Saturation
+      if(steering_delta > steering_max){
+        steering_delta = steering_max;
+      }else if(steering_delta < steering_min){
+        steering_delta = steering_min;
+      }
+      // Update PWM
       TIM13->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*steering_delta));
       osDelay(50);
     }
 }
 
-void Function_Task_StateMachine(void *argument){
+void Function_Task_Navigation(void *argument){
+	struct NodeCord* curr_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
+  // Se asume que la linked list ya esta generada
+  curr_node = cord_list.head;
+
   for(;;){
-    traction_setpoint = 1.0f;
-    blinker_mode = 0;
-    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-    osDelay(3000);
-    traction_setpoint = 0.0f;
-    blinker_mode = 3;
-    osDelay(1000);
+    if (cord_flag == false){
+		  x_desired = curr_node->x;
+		  y_desired = curr_node->y;
+    	
+      if (curr_node == cord_list.tail){
+		    curr_node = cord_list.head;
+		  }
+
+		  curr_node = curr_node->next;
+		  cord_flag = true;
+    }
+    
+    osDelay(100);
   }
 }
 
-void Function_Task_Stanley(void *argument){
-  // Local velocity
-  float velocity = 0.0f; float delta_movement = 0.0f;
-
-  // Gains
-  float k = 1.0f; float ks = 0.01f;
-  
-  // Local cordinates
-  float local_x = 0.0f; float local_y = 0.0f; 
-
-  // Cross track error
-  float cte = 0.0f; float M = 0.0; float C = 0.0;
-
-  // Time variables
-  /*uint32_t prev_time = 0; uint32_t elapsed_time;
-  for(;;){
-    velocity = float_bytes->val;
-    elapsed_time = HAL_GetTick() - prev_time;
-    delta_movement = velocity * (elapsed_time/1000.0f);
-    //cte = (x2_desired - x1_desired)*(y - y1_desired) - (y2_desired - y1_desired)*(x - x1_desired); // Calculate cross track
-    
-    local_x += delta_movement * cosf(psi);
-    local_y += delta_movement * sinf(psi);
-
-    M = (y2_desired - y1_desired)/(x2_desired - x1_desired);
-    C = y1_desired - M*x1_desired;
-    cte = abs(M*local_x  - local_y + C)/sqrt(M*M + 1);
-    
-    steering_delta = psi + ((180.0/M_PI) * (atan2f(k*cte, ks + velocity))); // Calculate steering with radian conversion
-    steering_delta = (steering_delta > steering_max) ? steering_max : (steering_delta < steering_min) ? steering_min : steering_delta; // Evil steering limiting
-    steering_delta = (steering_delta + 60) / 120; 
-
-    //printf("cte: %.3f\r\n", cte);
-
-    prev_time = HAL_GetTick();
-
-    osDelay(100);
-  }*/
-}
-
 void Function_Task_UART(void *argument){  
-  double angAcc = 0, angGyro = 0, angPond = 0, time_sample = 0.05, alpha = 0.1;
   char bt_msg[300];
-  float cte2;
   uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-
-    //printf("Stanley Steering: %.3f\r\n", steering_delta);
-    //printf("State: V:%.3f Psi:%.3f\r\n", float_bytes->val, psi);
-   float error = ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) - psi;
-    // print to bluetooth huart1
-    nbytes = sprintf(bt_msg, "Psi: %.3f Delta: %.3f Error: %.3f \r\n", psi, steering_delta, error);
-    HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, 100);
+    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %u, %u WP: %.1f, %.1f D2WP: %.3f Traction: %.1f \r\n", psi, steering_delta, *x, *y, x_desired, y_desired, distance_to_wp, traction_setpoint);
+    HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
 
     osDelay(50);
   }
@@ -884,10 +882,6 @@ void Function_Task_UART(void *argument){
 void Function_Task_MPU9250(void *argument){
   float time_sample_s = 0.05; uint32_t prevtime = 0; uint32_t elapsed_time;
   for(;;){
-
-    // wait until time sample is reached
-    //while (HAL_GetTick() - prevtime < time_sample_s * 1000);
-
     // print elapsed time
     elapsed_time = HAL_GetTick() - prevtime;
     // update robot angle with gyro
@@ -895,8 +889,6 @@ void Function_Task_MPU9250(void *argument){
       psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
     }
 
-    // printf("Elapsed time: %d\r\n", elapsed_time);
-    
     prevtime = HAL_GetTick();
 
 		ak8963_WhoAmI = mpu_r_ak8963_WhoAmI(&mpu);
@@ -950,22 +942,6 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
   MagOffset[1] = MagAccum[1] / num_samples;
   MagOffset[2] = MagAccum[2] / num_samples;
 
-}
-
-
-void Function_Task_LateralP(void *argument){
-  float error = 0, kp = 2;
-	for(;;){
-    // calculate angle of difference between desired point and current position
-    error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
-    steering_delta = (abs(error) < 2) ? 0.5 : (error*kp+60)/120;
-    if(steering_delta > steering_max){
-        steering_delta = steering_max;
-      }else if(steering_delta < steering_min){
-        steering_delta = steering_min;
-    }
-	  osDelay(50);
-	}
 }
 
 /* USER CODE END 4 */
