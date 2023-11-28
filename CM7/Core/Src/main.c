@@ -135,7 +135,7 @@ const osThreadAttr_t Attributes_Task_Traction = {
 
 const osThreadAttr_t Attributes_Task_Steering = {
   .name = "Task_Steering",
-  .stack_size = 128 * 8,
+  .stack_size = 128 * 8*2,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
@@ -294,9 +294,9 @@ Error_Handler();
   c_DBLL_init(&cord_list);
 
   c_push_back(&cord_list, 115, 15);
-  c_push_back(&cord_list, 160, 75);
-  c_push_back(&cord_list, 120, 145);
-  c_push_back(&cord_list, 46, 100);
+    c_push_back(&cord_list, 160, 75);
+    c_push_back(&cord_list, 120, 145);
+    c_push_back(&cord_list, 46, 100);
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -795,9 +795,9 @@ void Function_Task_Traction(void *argument){
 	//distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
 	distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Camara
 	traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
-	printf("%f\r\n", distance_to_wp);
+	//printf("%f\r\n", distance_to_wp);
     // Saturation
-	traction_setpoint = 0.7;
+	traction_setpoint = 0.679;
     traction_setpoint = (traction_setpoint > 1) ? 1 : traction_setpoint;
 	  if(traction_current < traction_setpoint){
 		  traction_current += 0.01;
@@ -814,7 +814,7 @@ void Function_Task_Traction(void *argument){
 }
 
 void Function_Task_Steering(void *argument){
-  float error = 0, kp = 2;
+  float errorIzq = 0, errorDer = 0, error = 0, kp = 2;
     for(;;){ 
       // Blinkers
       if (steering_delta < 0.4){
@@ -830,8 +830,40 @@ void Function_Task_Steering(void *argument){
       }else{
     	  error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
       }*/
-      error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
-      if (y_desired < *y) error *= -1;
+      /*if(x_desired - (*x) < 0){
+    	  errorIzq = 180 + (((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))));
+      }else{
+    	  if(y_desired - (*y) < 0){
+    	  		  errorIzq = psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) + 360);
+    	  	  }else{
+    	  		  errorIzq = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
+    	  	  }
+      }*/
+
+
+	 /*if(y_desired - (*y) > 0){
+		  errorDer =  psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) - 360)  ;
+	  }else{
+		  errorDer = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) ;
+	  }*/
+
+	/* if(abs(errorIzq) < abs(errorDer)) error = errorIzq;
+	 else error = errorDer;*/
+      float objective_angle = (180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x));\
+      float robot_angle_calc = psi;
+      if(objective_angle < 0){
+    	  objective_angle += 360;
+      }
+      if (psi < 0){
+          	  objective_angle += 360;
+      }
+
+      error = robot_angle_calc - objective_angle;
+
+
+
+	 //printf("Ang: %f, errIzq: %f, errorDer: %f\r\n", psi, errorIzq, errorDer, atan2f(y_desired - (*y), x_desired - (*x)));
+
       steering_delta = (abs(error) < 2) ? 0.5 : ((error*kp+60)/120);
       // Saturation
       if(steering_delta > steering_max){
@@ -841,7 +873,7 @@ void Function_Task_Steering(void *argument){
       }
       // Update PWM
       TIM13->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*steering_delta));
-      osDelay(50);
+      osDelay(100);
     }
 }
 
@@ -868,7 +900,8 @@ void Function_Task_Navigation(void *argument){
 }
 
 void Function_Task_UART(void *argument){  
-  char bt_msg[300];
+	float errorIzq = 0, errorDer = 0;
+	char bt_msg[300];
   uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
@@ -887,6 +920,9 @@ void Function_Task_MPU9250(void *argument){
     // update robot angle with gyro
     if (abs(gyro_list[2].mean) > 1){
       psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
+      if(psi < -360 || psi > 360){
+    	  psi = 0;
+      }
     }
 
     prevtime = HAL_GetTick();

@@ -511,7 +511,7 @@ void Function_Task_Wireless(void *argument){
 			*z = 300;
 		}*/
 		//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
-		osDelay(1000);
+		osDelay(500);
   }
 }
 
