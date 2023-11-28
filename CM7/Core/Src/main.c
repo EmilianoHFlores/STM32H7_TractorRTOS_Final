@@ -840,14 +840,19 @@ void Function_Task_Steering(void *argument){
     	  	  }
       }*/
 
+      /*if(y_desired - (*y) < 0){
+          	  		  errorIzq = psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) + 360);
+          	  	  }else{
+          	  		  errorIzq = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
+          	  	  }
 
-	 /*if(y_desired - (*y) > 0){
+	 if(y_desired - (*y) > 0){
 		  errorDer =  psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) - 360)  ;
 	  }else{
 		  errorDer = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) ;
-	  }*/
+	  }
 
-	/* if(abs(errorIzq) < abs(errorDer)) error = errorIzq;
+	 if(abs(errorIzq) < abs(errorDer)) error = errorIzq;
 	 else error = errorDer;*/
       float objective_angle = (180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x));\
       float robot_angle_calc = psi;
@@ -859,8 +864,8 @@ void Function_Task_Steering(void *argument){
       }
 
       error = robot_angle_calc - objective_angle;
-
-
+      if(error > 180) error -= 360;
+      else if (error < -180) error += 360;
 
 	 //printf("Ang: %f, errIzq: %f, errorDer: %f\r\n", psi, errorIzq, errorDer, atan2f(y_desired - (*y), x_desired - (*x)));
 
