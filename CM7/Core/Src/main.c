@@ -106,18 +106,21 @@ MPU9250 mpu;
 float psi = 0; // Global yaw angle
 
 // Navigation variables
+enum NavigationStates {IDLE, ACHIEVABLE, UNACHIEVABLE};
+
 float x_desired = 0; // Desired x coordinate of the start of the ref line
 float y_desired = 0; // Desired y coordinate of the start of the ref line
 float x_normal = 0;  // Normal vector of the ref line
 float y_normal = 0;  // Normal vector of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
-float speed_target = 0.0; // Desired speed
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
 float steering_max = 0.85f;     // Maximum steering angle
 float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
+
+enum NavigationStates navigation_state = IDLE; // 1 , 0;
 
 // PID variables
 PID pid;
@@ -129,11 +132,12 @@ float motorOutMax = 0.45;
 float motorOutMin = 0.18;
 
 float speed_target = 0.0f;
+float constant_speed = 0.2f; // m/s
 
 // Robot parameters
-float WB = 0.14; // Meters
-float max_turn_angle = 60;
-float min_turn_radius = WB / tanf(max_turn_angle * M_PI / 180.0f); // Meters
+static float const WB = 0.14; // Meters
+static float const max_turn_angle = 60;
+float min_turn_radius;
 
 /*
 typedef struct
@@ -154,9 +158,6 @@ typedef struct
 
 const int min_x = 15, max_x = 273;
 const int min_y = 9, max_y = 150;
-
-const float org_x = (max_x - min_x) / 2;
-const float org_y = (max_y - min_y) / 2;
 
 
 osThreadId_t Handle_Task_Traction;
@@ -228,8 +229,9 @@ void Function_Task_Stanley(void *argument);
 void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
 void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
-void circleWaypoints(struct doubleLinkedListCord* list, int radius, int n, float org_x, float org_y);
+void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, float org_x, float org_y);
 void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n, float org_x, float org_y);
+void infinteWaypoints(struct doubleLinkedListCord* list, float a, float width, float height, int n, float org_x, float org_y);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -248,6 +250,8 @@ int main(void)
 	velocity_union->val_arr[1] = 0;
 	velocity_union->val_arr[2] = 0;
 	velocity_union->val_arr[3] = 0;
+
+	min_turn_radius = WB / tanf(max_turn_angle * M_PI / 180.0f); // Meters
 
   /* USER CODE END 1 */
 /* USER CODE BEGIN Boot_Mode_Sequence_0 */
@@ -335,19 +339,18 @@ Error_Handler();
   }
 
   c_DBLL_init(&cord_list);
+  const float org_x = (max_x - min_x) / 2;
+  const float org_y = (max_y - min_y) / 2;
 
   int radius = 30;//cm
   int a = 50;
+  float a_f = 7;
   int b = 30;
-  int n_waypoints = 10;
-  //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
-  //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
+  int n_waypoints = 20;
 
-  c_push_back(&cord_list, 60, 15);
-  c_push_back(&cord_list, 115, 15);
-  c_push_back(&cord_list, 160, 75);
-  c_push_back(&cord_list, 120, 145);
-  c_push_back(&cord_list, 46, 100);
+  //circleWaypoints(&list, radius, n_waypoints, org_x, org_y);
+  //elipseWaypoints(&list, a, b, n_waypoints, org_x, org_y);
+  infinteWaypoints(&list, a_f, 3, 2, n_waypoints, org_x, org_y);
   
 
   //PID init
@@ -848,42 +851,12 @@ void Function_Task_Traction(void *argument){
     local_x += delta_movement * cosf(psi);
     local_y += delta_movement * sinf(psi);
     // P control
-    //distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
+    distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Estimacion
     //traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
     //printf("%f\r\n", distance_to_wp);
     // Saturation
-    // change speed every 1s, use HAL_GetTick()
-    if (HAL_GetTick() - state_time > 5000){
-      // 4 states
-      state_time = HAL_GetTick();
-      if (state == 0){
-        state = 1;
-      } else if (state == 1){
-        state = 2;
-      } else if (state == 2){
-        state = 3;
-      } else if (state == 3){
-        state = 4;
-      } else if (state == 4){
-        state = 0;
-      } else {
-        state = 0;
-      }
-    }
-    //traction_setpoint = 0.679; // min 0.679 max 1 ------- reverse 0.321 max 0
-    if (state == 0){
-      speed_target = 0;
-    } else if (state == 1){
-      speed_target = 0.35;
-    } else if (state == 2){
-      speed_target = 0.2;
-    } else if (state == 3){
-      speed_target = -0.2;
-    } else if (state == 4){
-      speed_target = -0.35;
-    }
-    
-    if (speed_target == 0){
+
+    if (navigation_state == IDLE){
       traction_setpoint = 0.5;
       //printf("Traction setpoint set to zero: %f, asked speed is : %f\r\n", traction_setpoint, speed_target);
     } else{
@@ -891,9 +864,9 @@ void Function_Task_Traction(void *argument){
       traction_setpoint = PID_calc(&pid, fabsf(speed_target), current_speed);
       // print traction_setpoint
       printf("Setpoint: %.2f, Target : %.2f Speed: %.2f\r\n", traction_setpoint, speed_target, current_speed);
-      if (speed_target < 0){
+      if (navigation_state == UNACHIEVABLE){
         traction_setpoint = 0.5 - traction_setpoint;
-      } else {
+      } else if (navigation_state == ACHIEVABLE){
         traction_setpoint = 0.5 + traction_setpoint;
       }
     }
@@ -924,52 +897,33 @@ void Function_Task_Steering(void *argument){
       } else {
         blinker_mode = 1;
       }
-      // P control
-      /*if (y_desired < (*y)){
-    	  error = psi - ((180/M_PI) * atan2f(x_desired - (*x), y_desired - (*y)));
-      }else{
-    	  error = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
-      }*/
-      /*if(x_desired - (*x) < 0){
-    	  errorIzq = 180 + (((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))));
-      }else{
-    	  if(y_desired - (*y) < 0){
-    	  		  errorIzq = psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) + 360);
-    	  	  }else{
-    	  		  errorIzq = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
-    	  	  }
-      }*/
-
-      /*if(y_desired - (*y) < 0){
-          	  		  errorIzq = psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) + 360);
-          	  	  }else{
-          	  		  errorIzq = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x)));
-          	  	  }
-
-	 if(y_desired - (*y) > 0){
-		  errorDer =  psi - ( ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) - 360)  ;
-	  }else{
-		  errorDer = psi - ((180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x))) ;
-	  }
-
-	 if(abs(errorIzq) < abs(errorDer)) error = errorIzq;
-	 else error = errorDer;*/
+      
+      
       float objective_angle = (180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x));\
       float robot_angle_calc = psi;
+      
       if(objective_angle < 0){
-    	  objective_angle += 360;
+        objective_angle += 360;
       }
+
       if (psi < 0){
-          	  objective_angle += 360;
+        objective_angle += 360;
       }
 
       error = robot_angle_calc - objective_angle;
+
       if(error > 180) error -= 360;
       else if (error < -180) error += 360;
 
-	 //printf("Ang: %f, errIzq: %f, errorDer: %f\r\n", psi, errorIzq, errorDer, atan2f(y_desired - (*y), x_desired - (*x)));
-
-      steering_delta = (abs(error) < 2) ? 0.5 : ((error*kp+60)/120);
+      if (navigation_state == IDLE){
+        steering_delta = 0.5;
+      } else if (navigation_state == UNACHIEVABLE){
+        steering_delta = (abs(error) < 2) ? 0.5 : ((-error*kp+60)/120);  
+      } else if (navigation_state == ACHIEVABLE){
+        //printf("Ang: %f, errIzq: %f, errorDer: %f\r\n", psi, errorIzq, errorDer, atan2f(y_desired - (*y), x_desired - (*x)));
+        steering_delta = (abs(error) < 2) ? 0.5 : ((error*kp+60)/120);  
+      }
+      
       // Saturation
       if(steering_delta > steering_max){
         steering_delta = steering_max;
@@ -1014,7 +968,11 @@ void Function_Task_Navigation(void *argument){
 		  cord_flag = true;
     }
 
-    if (){}
+    if (fabs(distance_to_wp) < min_turn_radius){
+      navigation_state = UNACHIEVABLE;
+    } else {
+      navigation_state = ACHIEVABLE;
+    }
     
     osDelay(100);
   }
@@ -1102,9 +1060,7 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
   MagOffset[2] = MagAccum[2] / num_samples;
 
 }
-
-
-void circleWaypoints(struct doubleLinkedListCord* list, int radius, int n, float org_x, float org_y){
+void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, float org_x, float org_y){
   float angle_increment = 360.00 / (double)n;
   float x = 0;
   float y = 0;
@@ -1128,6 +1084,17 @@ void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n,
   }
 }
 
+void infinteWaypoints(struct doubleLinkedListCord* list, float a, float width, float height, int n, float org_x, float org_y){
+  float angle_increment = 360.00 / (double)n;
+  float x = 0;
+  float y = 0;
+
+  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
+    x = (a * a) * sqrt(width) * cos(angle * (M_PI / 180)) + org_x;
+    y = (a * a) * sqrt(height) * cos(angle * (M_PI / 180)) * sin(angle * (M_PI / 180)) + org_y;
+    c_push_back(list, x, y);
+  }
+}
 
 /* USER CODE END 4 */
 

@@ -39,7 +39,7 @@ void c_pop_front(struct doubleLinkedListCord* list) {
         return;
 
     if (list->head != NULL) {
-        struct Node* node = list->head;
+        struct NodeCord* node = list->head;
         list->head = list->head->next;
         if (list->head != NULL) {
             list->head->prev = NULL;
@@ -118,4 +118,12 @@ void traverse(struct doubleLinkedList* list) {
         node = node->next;
     }
     printf("%f\n", list->mean);
+}
+
+void c_traverse(struct doubleLinkedListCord* list) {
+    struct NodeCord* node = list->head;
+    while (node != NULL) {
+        printf("%f,%f\n", node->x, node->y);
+        node = node->next;
+    }
 }

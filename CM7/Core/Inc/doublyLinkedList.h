@@ -42,5 +42,6 @@ void c_pop_front(struct doubleLinkedListCord* list);
 void push_back(struct doubleLinkedList* list, double data);
 void c_push_back(struct doubleLinkedListCord* list, double x, double y);
 void traverse(struct doubleLinkedList* list);
+void c_traverse(struct doubleLinkedListCord* list);
 
 #endif /* __DOUBLYLINKEDLIST_H */
