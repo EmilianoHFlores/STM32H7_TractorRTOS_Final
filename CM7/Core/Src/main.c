@@ -294,9 +294,9 @@ Error_Handler();
   c_DBLL_init(&cord_list);
 
   c_push_back(&cord_list, 115, 15);
-    c_push_back(&cord_list, 160, 75);
-    c_push_back(&cord_list, 120, 145);
-    c_push_back(&cord_list, 46, 100);
+  c_push_back(&cord_list, 160, 75);
+  c_push_back(&cord_list, 120, 145);
+  c_push_back(&cord_list, 46, 100);
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -912,8 +912,9 @@ void Function_Task_UART(void *argument){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
     nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %u, %u WP: %.1f, %.1f D2WP: %.3f Traction: %.1f \r\n", psi, steering_delta, *x, *y, x_desired, y_desired, distance_to_wp, traction_setpoint);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
+    HAL_UART_Transmit(&huart3, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
 
-    osDelay(50);
+    osDelay(100);
   }
 }
 
@@ -925,8 +926,10 @@ void Function_Task_MPU9250(void *argument){
     // update robot angle with gyro
     if (abs(gyro_list[2].mean) > 1){
       psi += (gyro_list[2].mean * elapsed_time/1000) / 4;
-      if(psi < -360 || psi > 360){
-    	  psi = 0;
+      if(psi < 0){
+    	  psi += 360;
+      } else if (psi > 360){
+      	  psi -= 360;
       }
     }
 
