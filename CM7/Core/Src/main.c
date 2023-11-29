@@ -120,10 +120,10 @@ uint8_t blinker_mode = 0;
 
 // PID variables
 PID pid;
-float motorP = 0.15;
+float motorP = 0.165;
 float motorI = 0.35;
-float motorD = 0.0;
-float motorIMax = 0.2;
+float motorD = 2.95;
+float motorIMax = 1.0;
 float motorOutMax = 0.45;
 float motorOutMin = 0.18;
 

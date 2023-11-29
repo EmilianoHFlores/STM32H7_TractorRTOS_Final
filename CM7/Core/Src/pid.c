@@ -28,6 +28,11 @@ float PID_calc(PID *pid, float target, float current) {
     float error = target - current;
     float pTerm = pid->kp * error;
     pid->error_sum += error;
+    if (pid->error_sum > pid->iMax) {
+        pid->error_sum = pid->iMax;
+    } else if (pid->error_sum < -pid->iMax) {
+        pid->error_sum = -pid->iMax;
+    }
     float iTerm = pid->ki * pid->error_sum;
     float dTerm = pid->kd * (error - pid->error_last);
     pid->error_last = error;

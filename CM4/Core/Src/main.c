@@ -543,6 +543,7 @@ void setup_NRF(void){
 	  NRF24_setPayloadSize(32);
 	  NRF24_setDataRate(RF24_2MBPS);
 	  NRF24_openReadingPipe(0, RxpipeAddrs);
+    NRF24_openReadingPipe(1, 0x0F);
 	  NRF24_enableDynamicPayloads();
 	  printRadioSettings();
 
