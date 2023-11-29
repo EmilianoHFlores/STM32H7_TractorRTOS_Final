@@ -74,7 +74,7 @@ osThreadId_t Handle_Task_Wireless;
 const osThreadAttr_t Attributes_Task_Wireless = {
   .name = "Task_Wireless",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityAboveNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 osThreadId_t Handle_Task_CAN;
@@ -486,32 +486,34 @@ void Function_Task_Wireless(void *argument){
 				 *y = 200;
 				 *z = 1;*/
 		for(;;){
-	    NRF24_read(myRxData, 32);
-	    //osMutexAcquire(mutex_id_Wireless, 1000);
-	    if ((((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1]) < 500){
-	      *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
-	    }
-	    if ((((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3]) < 500){
-	    	      *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
-	    	    }
-	    if ((((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5]) < 500){
-	    	      *z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
-	    	    }
-	    /*
-	    *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
-	    *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
-		*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
-	/*
-			*x += 1;
-			 *y += 1;
-			 *z += 1;
-		if(*x > 100){
-			*x = 1;
-			*y=200;
-			*z = 300;
-		}*/
-		//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
-		osDelay(500);
+			if (NRF24_available()){
+				NRF24_read(myRxData, 32);
+				//osMutexAcquire(mutex_id_Wireless, 1000);
+				if ((((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1]) < 500){
+				  *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				}
+				if ((((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3]) < 500){
+						  *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+						}
+				if ((((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5]) < 500){
+						  *z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+						}
+				/*
+				*x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				*y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+				*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
+			/*
+					*x += 1;
+					 *y += 1;
+					 *z += 1;
+				if(*x > 100){
+					*x = 1;
+					*y=200;
+					*z = 300;
+				}*/
+				//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
+			}
+			osDelay(10);
   }
 }
 
