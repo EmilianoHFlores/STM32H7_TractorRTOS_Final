@@ -90,8 +90,6 @@ bool *const flag = (bool *)0x30000060;
 
 bool cord_flag = false;
 
-float robot_angle = 0.0;
-
 float imu_pos_x = 0.0;
 float imu_pos_y = 0.0;
 
@@ -107,9 +105,11 @@ MPU9250 mpu;
 // State variables
 float psi = 0; // Global yaw angle
 
-// Stanley variables
+// Navigation variables
 float x_desired = 0; // Desired x coordinate of the start of the ref line
 float y_desired = 0; // Desired y coordinate of the start of the ref line
+float x_normal = 0;  // Normal vector of the ref line
+float y_normal = 0;  // Normal vector of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
@@ -128,6 +128,12 @@ float motorOutMax = 0.38;
 float motorOutMin = 0.18;
 
 float speed_target = 0.0f;
+
+// Robot parameters
+float WB = 0.14; // Meters
+float max_turn_angle = 60;
+float min_turn_radius = WB / tanf(max_turn_angle * M_PI / 180.0f); // Meters
+
 /*
 typedef struct
 {
@@ -824,7 +830,6 @@ void Function_Task_Traction(void *argument){
     local_y += delta_movement * sinf(psi);
     // P control
     //distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
-    distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Camara
     //traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
     //printf("%f\r\n", distance_to_wp);
     // Saturation
@@ -972,6 +977,8 @@ void Function_Task_Navigation(void *argument){
 		  curr_node = curr_node->next;
 		  cord_flag = true;
     }
+
+    if (){}
     
     osDelay(100);
   }
