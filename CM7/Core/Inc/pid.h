@@ -17,7 +17,7 @@ typedef struct
     float outMax;
 } PID;
 
-void PID_init(PID* pid, double kp, double ki, double kd, double iMax, double outMax, double outMin);
+void PID_init(PID* pid, float kp, float ki, float kd, float iMax, float outMax, float outMin);
 float PID_calc(PID *pid, float target, float current);
 
 #endif

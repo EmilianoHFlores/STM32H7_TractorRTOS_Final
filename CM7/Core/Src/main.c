@@ -120,11 +120,11 @@ uint8_t blinker_mode = 0;
 
 // PID variables
 PID pid;
-float motorP = 0.5;
-float motorI = 0.0;
+float motorP = 0.15;
+float motorI = 0.35;
 float motorD = 0.0;
-float motorIMax = 0.3;
-float motorOutMax = 0.38;
+float motorIMax = 0.2;
+float motorOutMax = 0.45;
 float motorOutMin = 0.18;
 
 float speed_target = 0.0f;
@@ -293,19 +293,19 @@ Error_Handler();
   MX_SPI3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(2000);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.075);
   TIM14->CCR1 = (uint32_t)(63999*0.075);
-  HAL_Delay(2000);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.1);
   TIM14->CCR1 = (uint32_t)(63999*0.1);
-  HAL_Delay(500);
+  HAL_Delay(50);
   //TIM13->CCR1 = (uint32_t)(63999*0.075);
   //TIM14->CCR1 = (uint32_t)(63999*0.075);
   //HAL_Delay(500);
   TIM13->CCR1 = (uint32_t)(63999*0.05);
   TIM14->CCR1 = (uint32_t)(63999*0.05);
-  HAL_Delay(500);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.075);
   TIM14->CCR1 = (uint32_t)(63999*0.075);
 
@@ -326,7 +326,7 @@ Error_Handler();
   c_push_back(&cord_list, 46, 100);
 
   //PID init
-  PID_init(&pid, motorP, motorI, motorD, motorIMax, motorOutMax, motorOutMin);
+  PID_init(&pid, motorP, motorI, motorD, motorIMax, motorOutMin, motorOutMax);
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -829,7 +829,7 @@ void Function_Task_Traction(void *argument){
     //printf("%f\r\n", distance_to_wp);
     // Saturation
     // change speed every 1s, use HAL_GetTick()
-    if (HAL_GetTick() - state_time > 2000){
+    if (HAL_GetTick() - state_time > 5000){
       // 4 states
       state_time = HAL_GetTick();
       if (state == 0){
@@ -850,20 +850,23 @@ void Function_Task_Traction(void *argument){
     if (state == 0){
       speed_target = 0;
     } else if (state == 1){
-      speed_target = 0.4;
+      speed_target = 0.35;
     } else if (state == 2){
       speed_target = 0.2;
     } else if (state == 3){
       speed_target = -0.2;
     } else if (state == 4){
-      speed_target = -0.4;
+      speed_target = -0.35;
     }
     
-    if (abs(speed_target) < 0.08){
+    if (speed_target == 0){
       traction_setpoint = 0.5;
+      //printf("Traction setpoint set to zero: %f, asked speed is : %f\r\n", traction_setpoint, speed_target);
     } else{
       current_speed = velocity_union->val;
-      traction_setpoint = PID_calc(&pid, abs(speed_target), current_speed);
+      traction_setpoint = PID_calc(&pid, fabsf(speed_target), current_speed);
+      // print traction_setpoint
+      printf("Setpoint: %.2f, Target : %.2f Speed: %.2f\r\n", traction_setpoint, speed_target, current_speed);
       if (speed_target < 0){
         traction_setpoint = 0.5 - traction_setpoint;
       } else {

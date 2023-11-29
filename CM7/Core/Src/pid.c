@@ -1,6 +1,6 @@
 #include "pid.h"
 
-void PID_init(PID* pid, double kp, double ki, double kd, double iMax, double outMin, double outMax) {
+void PID_init(PID* pid, float kp, float ki, float kd, float iMax, float outMin, float outMax) {
     pid->kp = kp;
     pid->ki = ki;
     pid->kd = kd;
@@ -37,5 +37,6 @@ float PID_calc(PID *pid, float target, float current) {
     } else if (output < pid->outMin) {
         output = pid->outMin;
     }
+    //printf ("pTerm: %.2f, iTerm: %.2f, dTerm: %.2f, output: %.2f\n", pTerm, iTerm, dTerm, output);
     return output;
 }
