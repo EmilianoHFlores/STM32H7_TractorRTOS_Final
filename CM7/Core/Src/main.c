@@ -28,6 +28,7 @@
 #include "mpu9250.h"
 #include "doublyLinkedList.h"
 #include "stdbool.h"
+#include "pid.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -80,7 +81,7 @@ union bytes_to_float{
 	uint8_t val_arr[sizeof(float)];
 	float val;
 };
-union bytes_to_float *float_bytes = (union bytes_to_float *)0x30000000;
+union bytes_to_float *velocity_union = (union bytes_to_float *)0x30000000;
 
 uint16_t *const x = (uint16_t *)0x30000030;
 uint16_t *const y = (uint16_t *)0x30000040;
@@ -88,8 +89,6 @@ uint16_t *const z = (uint16_t *)0x30000050;
 bool *const flag = (bool *)0x30000060;
 
 bool cord_flag = false;
-
-float robot_angle = 0.0;
 
 float imu_pos_x = 0.0;
 float imu_pos_y = 0.0;
@@ -106,9 +105,11 @@ MPU9250 mpu;
 // State variables
 float psi = 0; // Global yaw angle
 
-// Stanley variables
+// Navigation variables
 float x_desired = 0; // Desired x coordinate of the start of the ref line
 float y_desired = 0; // Desired y coordinate of the start of the ref line
+float x_normal = 0;  // Normal vector of the ref line
+float y_normal = 0;  // Normal vector of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 float speed_target = 0.0; // Desired speed
@@ -117,6 +118,37 @@ float steering_angle = 0.0f; // Global steering angle
 float steering_max = 0.85f;     // Maximum steering angle
 float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
+
+// PID variables
+PID pid;
+float motorP = 0.15;
+float motorI = 0.35;
+float motorD = 0.0;
+float motorIMax = 0.2;
+float motorOutMax = 0.45;
+float motorOutMin = 0.18;
+
+float speed_target = 0.0f;
+
+// Robot parameters
+float WB = 0.14; // Meters
+float max_turn_angle = 60;
+float min_turn_radius = WB / tanf(max_turn_angle * M_PI / 180.0f); // Meters
+
+/*
+typedef struct
+{
+    // all starts as 0
+    float kp;
+    float ki;
+    float kd;
+    float iMax;
+    float error_sum;
+    float error_last;
+    float outMin;
+    float outMax;
+} PID;
+*/
 
 // Plane variables
 
@@ -138,7 +170,7 @@ osThreadId_t Handle_Task_Blinkers;
 
 const osThreadAttr_t Attributes_Task_Traction = {
   .name = "Task_Traction",
-  .stack_size = 128 * 8,
+  .stack_size = 128 * 8*2,
   .priority = (osPriority_t) osPriorityAboveNormal,
 };
 
@@ -212,10 +244,10 @@ void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n,
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	float_bytes->val_arr[0] = 0;
-	float_bytes->val_arr[1] = 0;
-	float_bytes->val_arr[2] = 0;
-	float_bytes->val_arr[3] = 0;
+	velocity_union->val_arr[0] = 0;
+	velocity_union->val_arr[1] = 0;
+	velocity_union->val_arr[2] = 0;
+	velocity_union->val_arr[3] = 0;
 
   /* USER CODE END 1 */
 /* USER CODE BEGIN Boot_Mode_Sequence_0 */
@@ -277,19 +309,19 @@ Error_Handler();
   MX_SPI3_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(2000);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.075);
   TIM14->CCR1 = (uint32_t)(63999*0.075);
-  HAL_Delay(2000);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.1);
   TIM14->CCR1 = (uint32_t)(63999*0.1);
-  HAL_Delay(500);
+  HAL_Delay(50);
   //TIM13->CCR1 = (uint32_t)(63999*0.075);
   //TIM14->CCR1 = (uint32_t)(63999*0.075);
   //HAL_Delay(500);
   TIM13->CCR1 = (uint32_t)(63999*0.05);
   TIM14->CCR1 = (uint32_t)(63999*0.05);
-  HAL_Delay(500);
+  HAL_Delay(50);
   TIM13->CCR1 = (uint32_t)(63999*0.075);
   TIM14->CCR1 = (uint32_t)(63999*0.075);
 
@@ -317,6 +349,9 @@ Error_Handler();
   c_push_back(&cord_list, 120, 145);
   c_push_back(&cord_list, 46, 100);
   
+
+  //PID init
+  PID_init(&pid, motorP, motorI, motorD, motorIMax, motorOutMin, motorOutMax);
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -802,34 +837,79 @@ void Function_Task_Blinkers(void *argument){
 }
 
 void Function_Task_Traction(void *argument){
-  float kp = 10, velocity = 0, delta_movement = 0, local_x = 0.0f,  local_y = 0.0f;
-  uint32_t prev_time = 0, elapsed_time = 0;
+  float kp = 10, velocity = 0, delta_movement = 0, local_x = 0.0f,  local_y = 0.0f, current_speed = 0.0f;
+  uint32_t prev_time = 0, elapsed_time = 0, state_time;
+  uint8_t state = 0;
   for(;;){
-	// x y encoder estimation
-	velocity = float_bytes->val;
-	elapsed_time = HAL_GetTick() - prev_time;
-	delta_movement = velocity * (elapsed_time/1000.0f);
-	local_x += delta_movement * cosf(psi);
-	local_y += delta_movement * sinf(psi);
+    // x y encoder estimation
+    velocity = velocity_union->val;
+    elapsed_time = HAL_GetTick() - prev_time;
+    delta_movement = velocity * (elapsed_time/1000.0f);
+    local_x += delta_movement * cosf(psi);
+    local_y += delta_movement * sinf(psi);
     // P control
-	//distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
-	distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Camara
-	traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
-	//printf("%f\r\n", distance_to_wp);
+    //distance_to_wp = sqrt( pow((x_desired - (local_x*100)),2) + pow((y_desired - (local_y*100)),2) ); // Estimacion
+    //traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
+    //printf("%f\r\n", distance_to_wp);
     // Saturation
-	traction_setpoint = 0.679;
+    // change speed every 1s, use HAL_GetTick()
+    if (HAL_GetTick() - state_time > 5000){
+      // 4 states
+      state_time = HAL_GetTick();
+      if (state == 0){
+        state = 1;
+      } else if (state == 1){
+        state = 2;
+      } else if (state == 2){
+        state = 3;
+      } else if (state == 3){
+        state = 4;
+      } else if (state == 4){
+        state = 0;
+      } else {
+        state = 0;
+      }
+    }
+    //traction_setpoint = 0.679; // min 0.679 max 1 ------- reverse 0.321 max 0
+    if (state == 0){
+      speed_target = 0;
+    } else if (state == 1){
+      speed_target = 0.35;
+    } else if (state == 2){
+      speed_target = 0.2;
+    } else if (state == 3){
+      speed_target = -0.2;
+    } else if (state == 4){
+      speed_target = -0.35;
+    }
+    
+    if (speed_target == 0){
+      traction_setpoint = 0.5;
+      //printf("Traction setpoint set to zero: %f, asked speed is : %f\r\n", traction_setpoint, speed_target);
+    } else{
+      current_speed = velocity_union->val;
+      traction_setpoint = PID_calc(&pid, fabsf(speed_target), current_speed);
+      // print traction_setpoint
+      printf("Setpoint: %.2f, Target : %.2f Speed: %.2f\r\n", traction_setpoint, speed_target, current_speed);
+      if (speed_target < 0){
+        traction_setpoint = 0.5 - traction_setpoint;
+      } else {
+        traction_setpoint = 0.5 + traction_setpoint;
+      }
+    }
+
     traction_setpoint = (traction_setpoint > 1) ? 1 : traction_setpoint;
-	  if(traction_current < traction_setpoint){
-		  traction_current += 0.01;
-	  }else if(traction_current > traction_setpoint){
-		  traction_current -= 0.01;
-	  }
+    if(traction_current < traction_setpoint){
+      traction_current += 0.02;
+    }else if(traction_current > traction_setpoint){
+      traction_current -= 0.02;
+    }
     // Update PWM
     TIM14->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*traction_current));
 
-	cord_flag = (distance_to_wp < 25) ? false : true;
-    prev_time = HAL_GetTick();
-    osDelay(10);
+    cord_flag = (distance_to_wp < 25) ? false : true;
+      prev_time = HAL_GetTick();
+      osDelay(10);
   }
 }
 
@@ -933,6 +1013,8 @@ void Function_Task_Navigation(void *argument){
       
 		  cord_flag = true;
     }
+
+    if (){}
     
     osDelay(100);
   }
@@ -943,7 +1025,7 @@ void Function_Task_UART(void *argument){
   uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %u, %u WP: %.1f, %.1f D2WP: %.3f Traction: %.1f \r\n", psi, steering_delta, *x, *y, x_desired, y_desired, distance_to_wp, traction_setpoint);
+    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %u, %u WP: %.1f, %.1f D2WP: %.3f Traction: %.2f Speed Target: %.2f Speed: %0.2f\r\n", psi, steering_delta, *x, *y, x_desired, y_desired, distance_to_wp, traction_setpoint, speed_target, velocity_union->val);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
     HAL_UART_Transmit(&huart3, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
 
