@@ -111,6 +111,7 @@ float x_desired = 0; // Desired x coordinate of the start of the ref line
 float y_desired = 0; // Desired y coordinate of the start of the ref line
 static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
+float speed_target = 0.0; // Desired speed
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
 float steering_max = 0.85f;     // Maximum steering angle
@@ -903,19 +904,33 @@ void Function_Task_Steering(void *argument){
 
 void Function_Task_Navigation(void *argument){
 	struct NodeCord* curr_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
+  struct NodeCord* prev_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
   // Se asume que la linked list ya esta generada
   curr_node = cord_list.head;
+  prev_node = NULL;
+  bool finish = false;
 
   for(;;){
+    if (finish) continue;
+
     if (cord_flag == false){
 		  x_desired = curr_node->x;
 		  y_desired = curr_node->y;
-    	
+
+      if (prev_node != NULL && curr_node == cord_list.head){
+        speed_target = 0.0;
+        finish = true;
+        continue;
+      } 
+
+    	prev_node = curr_node;
+		  
       if (curr_node == cord_list.tail){
 		    curr_node = cord_list.head;
-		  }
-
-		  curr_node = curr_node->next;
+		  } else {
+        curr_node = curr_node->next;  
+      }
+      
 		  cord_flag = true;
     }
     
