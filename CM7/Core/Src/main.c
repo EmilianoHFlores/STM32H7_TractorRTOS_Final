@@ -117,6 +117,14 @@ float steering_max = 0.85f;     // Maximum steering angle
 float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
 
+// Plane variables
+
+const int min_x = 15, max_x = 273;
+const int min_y = 9, max_y = 150;
+
+const float org_x = (max_x - min_x) / 2;
+const float org_y = (max_y - min_y) / 2;
+
 
 osThreadId_t Handle_Task_Traction;
 osThreadId_t Handle_Task_Steering;
@@ -187,6 +195,8 @@ void Function_Task_Stanley(void *argument);
 void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
 void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
+void circleWaypoints(struct doubleLinkedListCord* list, int radius, int n, float org_x, float org_y);
+void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n, float org_x, float org_y);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -293,10 +303,19 @@ Error_Handler();
 
   c_DBLL_init(&cord_list);
 
+  int radius = 30;//cm
+  int a = 50;
+  int b = 30;
+  int n_waypoints = 10;
+  //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
+  //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
+
+  c_push_back(&cord_list, 60, 15);
   c_push_back(&cord_list, 115, 15);
   c_push_back(&cord_list, 160, 75);
   c_push_back(&cord_list, 120, 145);
   c_push_back(&cord_list, 46, 100);
+  
 
   MPU9250_Init(&mpu);
   calibrate_MPU9250(&MPU_SPI);
@@ -814,7 +833,7 @@ void Function_Task_Traction(void *argument){
 }
 
 void Function_Task_Steering(void *argument){
-  float errorIzq = 0, errorDer = 0, error = 0, kp = 2;
+  float error = 0, kp = 2;
     for(;;){ 
       // Blinkers
       if (steering_delta < 0.4){
@@ -905,7 +924,6 @@ void Function_Task_Navigation(void *argument){
 }
 
 void Function_Task_UART(void *argument){  
-	float errorIzq = 0, errorDer = 0;
 	char bt_msg[300];
   uint8_t nbytes;
   for(;;){
@@ -987,6 +1005,32 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
   MagOffset[2] = MagAccum[2] / num_samples;
 
 }
+
+
+void circleWaypoints(struct doubleLinkedListCord* list, int radius, int n, float org_x, float org_y){
+  float angle_increment = 360.00 / (double)n;
+  float x = 0;
+  float y = 0;
+
+  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
+    x = radius * cos(angle * (M_PI / 180)) + org_x;
+    y = radius * sin(angle * (M_PI / 180)) + org_y;
+    c_push_back(list, x, y);
+  }
+}
+
+void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n, float org_x, float org_y){
+  float angle_increment = 360.00 / (double)n;
+  float x = 0;
+  float y = 0;
+
+  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
+    x = a * cos(angle * (M_PI / 180)) + org_x;
+    y = b * sin(angle * (M_PI / 180)) + org_y;
+    c_push_back(list, x, y);
+  }
+}
+
 
 /* USER CODE END 4 */
 
