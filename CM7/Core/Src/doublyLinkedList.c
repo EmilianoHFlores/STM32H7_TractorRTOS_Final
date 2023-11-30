@@ -123,7 +123,7 @@ void traverse(struct doubleLinkedList* list) {
 void c_traverse(struct doubleLinkedListCord* list) {
     struct NodeCord* node = list->head;
     while (node != NULL) {
-        printf("%f,%f\n", node->x, node->y);
+        printf("%f,%f\r\n", node->x, node->y);
         node = node->next;
     }
 }

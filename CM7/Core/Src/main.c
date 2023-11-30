@@ -124,20 +124,23 @@ enum NavigationStates navigation_state = IDLE; // 1 , 0;
 
 // PID variables
 PID pid;
-float motorP = 0.15;
+float motorP = 0.215;
 float motorI = 0.35;
-float motorD = 0.0;
-float motorIMax = 0.2;
+float motorD = 3.5;
+float motorIMax = 1.0;
 float motorOutMax = 0.45;
 float motorOutMin = 0.18;
 
-float speed_target = 0.0f;
+float speed_target = 0.225;
 float constant_speed = 0.2f; // m/s
 
 // Robot parameters
 static float const WB = 0.14; // Meters
 static float const max_turn_angle = 60;
 float min_turn_radius;
+
+// position
+float local_x = 0.0f,  local_y = 0.0f;
 
 /*
 typedef struct
@@ -156,8 +159,8 @@ typedef struct
 
 // Plane variables
 
-const int min_x = 15, max_x = 273;
-const int min_y = 9, max_y = 150;
+const int min_x = 0, max_x = 273;
+const int min_y = 0, max_y = 170;
 
 
 osThreadId_t Handle_Task_Traction;
@@ -344,14 +347,19 @@ Error_Handler();
 
   int radius = 30;//cm
   int a = 50;
-  float a_f = 7;
+  float a_f = 9;
   int b = 30;
-  int n_waypoints = 20;
+  int n_waypoints = 5;
 
   //circleWaypoints(&list, radius, n_waypoints, org_x, org_y);
   //elipseWaypoints(&list, a, b, n_waypoints, org_x, org_y);
-  infinteWaypoints(&list, a_f, 3, 2, n_waypoints, org_x, org_y);
+  infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
   
+  c_traverse(&cord_list);
+
+  x_desired = cord_list.head->x;
+  y_desired = cord_list.head->y;
+
 
   //PID init
   PID_init(&pid, motorP, motorI, motorD, motorIMax, motorOutMin, motorOutMax);
@@ -840,18 +848,27 @@ void Function_Task_Blinkers(void *argument){
 }
 
 void Function_Task_Traction(void *argument){
-  float kp = 10, velocity = 0, delta_movement = 0, local_x = 0.0f,  local_y = 0.0f, current_speed = 0.0f;
+  float kp = 10, velocity = 0, delta_movement = 0, current_speed = 0.0f, delta_movement_x = 0.0f, delta_movement_y = 0.0f;
   uint32_t prev_time = 0, elapsed_time = 0, state_time;
   uint8_t state = 0;
+  float kupdate_distance = 0.2;
   for(;;){
     // x y encoder estimation
     velocity = velocity_union->val;
     elapsed_time = HAL_GetTick() - prev_time;
-    delta_movement = velocity * (elapsed_time/1000.0f);
-    local_x += delta_movement * cosf(psi);
-    local_y += delta_movement * sinf(psi);
+    prev_time = HAL_GetTick();
+    delta_movement = velocity * (elapsed_time/1000.0f) * 100.0;
+    delta_movement_x = delta_movement * cosf((psi) * M_PI / 180.0f);
+    delta_movement_y = delta_movement * sinf((psi) * M_PI / 180.0f);
+    local_x += delta_movement_x;
+    local_y += delta_movement_y;
+    // check if camera is updated
+    /*if ((sqrt(pow((local_x - *x),2) + pow((local_y - *y),2)) < kupdate_distance)){
+      local_x = *x;
+      local_y = *y;
+    }*/
     // P control
-    distance_to_wp = sqrt( pow((x_desired - (*x)),2) + pow((y_desired - (*y)),2) ); // Estimacion
+    distance_to_wp = sqrt( pow((x_desired - (local_x)),2) + pow((y_desired - (local_y)),2) ); // Estimacion
     //traction_setpoint = (kp * (distance_to_wp) / 400) + 0.5;
     //printf("%f\r\n", distance_to_wp);
     // Saturation
@@ -863,7 +880,7 @@ void Function_Task_Traction(void *argument){
       current_speed = velocity_union->val;
       traction_setpoint = PID_calc(&pid, fabsf(speed_target), current_speed);
       // print traction_setpoint
-      printf("Setpoint: %.2f, Target : %.2f Speed: %.2f\r\n", traction_setpoint, speed_target, current_speed);
+      //printf("Setpoint: %.2f, Target : %.2f Speed: %.2f\r\n", traction_setpoint, speed_target, current_speed);
       if (navigation_state == UNACHIEVABLE){
         traction_setpoint = 0.5 - traction_setpoint;
       } else if (navigation_state == ACHIEVABLE){
@@ -881,7 +898,7 @@ void Function_Task_Traction(void *argument){
     TIM14->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*traction_current));
 
     cord_flag = (distance_to_wp < 25) ? false : true;
-      prev_time = HAL_GetTick();
+      
       osDelay(10);
   }
 }
@@ -899,7 +916,7 @@ void Function_Task_Steering(void *argument){
       }
       
       
-      float objective_angle = (180/M_PI) * atan2f(y_desired - (*y), x_desired - (*x));\
+      float objective_angle = (180/M_PI) * atan2f(y_desired - (local_y), x_desired - (local_x));\
       float robot_angle_calc = psi;
       
       if(objective_angle < 0){
@@ -953,6 +970,7 @@ void Function_Task_Navigation(void *argument){
 
       if (prev_node != NULL && curr_node == cord_list.head){
         speed_target = 0.0;
+        navigation_state = IDLE;
         finish = true;
         continue;
       } 
@@ -983,7 +1001,7 @@ void Function_Task_UART(void *argument){
   uint8_t nbytes;
   for(;;){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %u, %u WP: %.1f, %.1f D2WP: %.3f Traction: %.2f Speed Target: %.2f Speed: %0.2f\r\n", psi, steering_delta, *x, *y, x_desired, y_desired, distance_to_wp, traction_setpoint, speed_target, velocity_union->val);
+    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %.1f, %.1f WP: %.1f, %.1f D2WP: %.3f Traction: %.2f Speed Target: %.2f Speed: %0.2f Nav_state: \r\n", psi, steering_delta, local_x, local_y, x_desired, y_desired, distance_to_wp, traction_setpoint, speed_target, velocity_union->val, navigation_state);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
     HAL_UART_Transmit(&huart3, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
 
@@ -1085,15 +1103,16 @@ void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n,
 }
 
 void infinteWaypoints(struct doubleLinkedListCord* list, float a, float width, float height, int n, float org_x, float org_y){
-  float angle_increment = 360.00 / (double)n;
-  float x = 0;
-  float y = 0;
+	float angle_increment = M_PI / (float)n;
+	float x = 0;
+	float y = 0;
 
-  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
-    x = (a * a) * sqrt(width) * cos(angle * (M_PI / 180)) + org_x;
-    y = (a * a) * sqrt(height) * cos(angle * (M_PI / 180)) * sin(angle * (M_PI / 180)) + org_y;
-    c_push_back(list, x, y);
-  }
+	for (float angle = M_PI/2; angle > -2 * M_PI + M_PI/2; angle -= angle_increment){
+	printf("angle: %f\n", angle);
+	x = (a * a) * sqrt(width) * cosf(angle) + org_x;
+	y = (a * a) * sqrt(height) * cosf(angle) * sinf(angle) + org_y;
+	c_push_back(list, x, y);
+	}
 }
 
 /* USER CODE END 4 */
