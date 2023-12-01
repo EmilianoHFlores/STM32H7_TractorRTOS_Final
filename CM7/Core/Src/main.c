@@ -229,8 +229,6 @@ void Function_Task_Steering(void *argument);
 void Function_Task_Navigation(void *argument);
 void Function_Task_UART(void *argument);
 void Function_Task_MPU9250(void *argument);
-void Function_Task_LateralP(void *argument);
-void Function_Task_Stanley(void *argument);
 void Function_Task_Blinkers(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
 void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
