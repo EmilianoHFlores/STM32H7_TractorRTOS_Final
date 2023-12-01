@@ -73,7 +73,7 @@ void push_back(struct doubleLinkedList* list, double data) {
     }
     else {
         node->prev = list->tail;
-        list->tail->next = node;
+        node->prev->next = node;
         list->tail = node;
     }
     

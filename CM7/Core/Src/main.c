@@ -116,7 +116,7 @@ static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
-float steering_max = 0.80f;     // Maximum steering angle
+float steering_max = 0.84f;     // Maximum steering angle
 float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
 
@@ -124,9 +124,9 @@ enum NavigationStates navigation_state = IDLE; // 1 , 0;
 
 // PID variables
 PID pid;
-float motorP = 0.215;
-float motorI = 0.35;
-float motorD = 3.5;
+float motorP = 0.165;
+float motorI = 0.15;
+float motorD = 2.95;
 float motorIMax = 1.0;
 float motorOutMax = 0.45;
 float motorOutMin = 0.18;
@@ -141,6 +141,8 @@ float min_turn_radius;
 
 // position
 float local_x = 0.0f,  local_y = 0.0f;
+
+int n_waypoints = 10;
 
 /*
 typedef struct
@@ -349,7 +351,6 @@ Error_Handler();
   int a = 50;
   float a_f = 9;
   int b = 30;
-  int n_waypoints = 5;
 
   //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
   //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
@@ -960,22 +961,26 @@ void Function_Task_Navigation(void *argument){
   curr_node = cord_list.head;
   prev_node = NULL;
   bool finish = false;
+  int cnt = 0;
 
   for(;;){
-    if (finish) continue;
+    if (finish || ( cnt > (n_waypoints * 2 - 1))){
+    	navigation_state = IDLE;
+    	continue;
+    }
 
     if (cord_flag == false){
-		  x_desired = curr_node->x;
-		  y_desired = curr_node->y;
+	  x_desired = curr_node->x;
+	  y_desired = curr_node->y;
 
-      if (prev_node != NULL && curr_node == cord_list.head){
+      if (prev_node == cord_list.head && curr_node == cord_list.head){
         speed_target = 0.0;
         navigation_state = IDLE;
         finish = true;
         continue;
-      } 
+      }
 
-    	prev_node = curr_node;
+	  prev_node = curr_node;
 		  
       if (curr_node == cord_list.tail){
 		    curr_node = cord_list.head;
@@ -983,7 +988,8 @@ void Function_Task_Navigation(void *argument){
         curr_node = curr_node->next;  
       }
       
-		  cord_flag = true;
+      cnt++;
+	  cord_flag = true;
     }
 
     if (fabs(distance_to_wp) < min_turn_radius){
