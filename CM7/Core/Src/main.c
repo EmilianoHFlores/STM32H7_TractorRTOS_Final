@@ -116,7 +116,7 @@ static float traction_setpoint; // Desired traction
 static float traction_current; // Current level of traction
 static float steering_delta;    // Desired steering angle
 float steering_angle = 0.0f; // Global steering angle
-float steering_max = 0.85f;     // Maximum steering angle
+float steering_max = 0.80f;     // Maximum steering angle
 float steering_min = 0.15f;     // Minimum steering angle
 uint8_t blinker_mode = 0;
 
@@ -351,8 +351,8 @@ Error_Handler();
   int b = 30;
   int n_waypoints = 5;
 
-  //circleWaypoints(&list, radius, n_waypoints, org_x, org_y);
-  //elipseWaypoints(&list, a, b, n_waypoints, org_x, org_y);
+  //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
+  //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
   infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
   
   c_traverse(&cord_list);
@@ -1082,8 +1082,10 @@ void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, flo
   float angle_increment = 360.00 / (double)n;
   float x = 0;
   float y = 0;
+  float init_angle = 270.00;
+  float end_angle = init_angle + 360.00;
 
-  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
+  for (float angle = init_angle; angle < end_angle; angle += angle_increment){
     x = radius * cos(angle * (M_PI / 180)) + org_x;
     y = radius * sin(angle * (M_PI / 180)) + org_y;
     c_push_back(list, x, y);
@@ -1094,8 +1096,10 @@ void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n,
   float angle_increment = 360.00 / (double)n;
   float x = 0;
   float y = 0;
+  float init_angle = 270.00;
+  float end_angle = init_angle + 360.00;
 
-  for (float angle = 0.0; angle < 360.00; angle += angle_increment){
+  for (float angle = init_angle; angle < end_angle; angle += angle_increment){
     x = a * cos(angle * (M_PI / 180)) + org_x;
     y = b * sin(angle * (M_PI / 180)) + org_y;
     c_push_back(list, x, y);
