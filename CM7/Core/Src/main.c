@@ -168,11 +168,10 @@ const int min_y = 0, max_y = 170;
 osThreadId_t Handle_Task_Traction;
 osThreadId_t Handle_Task_Steering;
 osThreadId_t Handle_Task_Navigation;
-osThreadId_t Handle_Task_UART;
+osThreadId_t Handle_Task_Telemetry;
 osThreadId_t Handle_Task_MPU9250;
-osThreadId_t Handle_Task_LateralP;
-osThreadId_t Handle_Task_Stanley;
 osThreadId_t Handle_Task_Blinkers;
+osThreadId_t Handle_Task_Goal;
 
 const osThreadAttr_t Attributes_Task_Traction = {
   .name = "Task_Traction",
@@ -187,13 +186,19 @@ const osThreadAttr_t Attributes_Task_Steering = {
 };
 
 const osThreadAttr_t Attributes_Task_Navigation = {
-  .name = "Task_StateMachine",
+  .name = "Task_Navigation",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-const osThreadAttr_t Attributes_Task_UART = {
-  .name = "Task_UART",
+const osThreadAttr_t Attributes_Task_Goal = {
+  .name = "Task_Goals",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t Attributes_Task_Telemetry = {
+  .name = "Task_Telemetry",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityBelowNormal,
 };
@@ -205,7 +210,7 @@ const osThreadAttr_t Attributes_Task_MPU9250 = {
 };
 
 const osThreadAttr_t Attributes_Task_Blinkers = {
-  .name = "Task_Traction",
+  .name = "Task_Blinkers",
   .stack_size = 128 * 8,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -227,9 +232,10 @@ void StartDefaultTask(void *argument);
 void Function_Task_Traction(void *argument);
 void Function_Task_Steering(void *argument);
 void Function_Task_Navigation(void *argument);
-void Function_Task_UART(void *argument);
+void Function_Task_Telemetry(void *argument);
 void Function_Task_MPU9250(void *argument);
 void Function_Task_Blinkers(void *argument);
+void Function_Task_Goal(void *argument);
 void calibrate_MPU9250(SPI_HandleTypeDef *spi);
 void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
 void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, float org_x, float org_y);
@@ -352,12 +358,12 @@ Error_Handler();
 
   //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
   //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
-  infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
+  //infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
   
-  c_traverse(&cord_list);
+  //c_traverse(&cord_list);
 
-  x_desired = cord_list.head->x;
-  y_desired = cord_list.head->y;
+  //x_desired = cord_list.head->x;
+  //y_desired = cord_list.head->y;
 
 
   //PID init
@@ -400,11 +406,11 @@ Error_Handler();
   /* add threads, ... */
   Handle_Task_Steering     = osThreadNew(Function_Task_Steering,   NULL, &Attributes_Task_Steering);
   Handle_Task_Traction     = osThreadNew(Function_Task_Traction,   NULL, &Attributes_Task_Traction);
-  Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
-  Handle_Task_UART         = osThreadNew(Function_Task_UART,       NULL, &Attributes_Task_UART);
+  //Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
+  Handle_Task_Telemetry    = osThreadNew(Function_Task_Telemetry,  NULL, &Attributes_Task_Telemetry);
+  Handle_Task_Goal         = osThreadNew(Function_Task_Goal,       NULL, &Attributes_Task_Goal);
   Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250,    NULL, &Attributes_Task_MPU9250);
   Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers,   NULL, &Attributes_Task_Blinkers);
-  //Handle_Task_Stanley       = osThreadNew(Function_Task_Stanley, NULL, &Attributes_Task_Stanley);
   
   /* USER CODE END RTOS_THREADS */
 
@@ -952,8 +958,32 @@ void Function_Task_Steering(void *argument){
     }
 }
 
+void Function_Task_Goal(void *argument){
+  uint8_t current_seq = 0;
+  uint8_t goal[5] = {0,0,0,0,0} ; // (x1 x2) (y1 y2) seq
+  for(;;){
+    HAL_UART_Receive(&huart1, &goal, 5, 100);
+    if(cord_flag == false){
+      speed_target = 0;
+      navigation_state = IDLE;
+    }
+    if (current_seq != goal[4]){
+      cord_flag = true;
+      speed_target = 0;
+      current_seq = goal[4];
+      x_desired = (float)((goal[0] << 8) | goal[1]);
+      y_desired = (float)((goal[2] << 8) | goal[3]);
+    }
+    if (fabs(distance_to_wp) < min_turn_radius){
+      navigation_state = UNACHIEVABLE;
+    } else {
+      navigation_state = ACHIEVABLE;
+    }
+  }
+}
+
 void Function_Task_Navigation(void *argument){
-	struct NodeCord* curr_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
+  struct NodeCord* curr_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
   struct NodeCord* prev_node = (struct NodeCord*)malloc(sizeof(struct NodeCord));
   // Se asume que la linked list ya esta generada
   curr_node = cord_list.head;
@@ -1000,7 +1030,7 @@ void Function_Task_Navigation(void *argument){
   }
 }
 
-void Function_Task_UART(void *argument){  
+void Function_Task_Telemetry(void *argument){  
 	char bt_msg[300];
   uint8_t nbytes;
   for(;;){
