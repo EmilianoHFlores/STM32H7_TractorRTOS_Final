@@ -4,8 +4,8 @@ RemoteSystemsTempFiles/
 .settings/
 Debug/
 *.launch
-tractor_ws/
-visualizer/
-
+tractor_ws/build/
+tractor_ws/devel/
+*.catkin_workspace
 # STM32 git ignore
 *.mxproject
