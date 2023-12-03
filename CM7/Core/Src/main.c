@@ -43,6 +43,9 @@
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 #endif
 #define MPU_SPI hspi3
+
+// set as 1 to use ROS Bluetooth goals
+#define ROS_ENABLE 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -379,7 +382,10 @@ Error_Handler();
   for(int i = 0; i < 4; i++){HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin); HAL_Delay(20);}
 
   printf("PreeRTOS\r\n");
-  HAL_UART_Receive_IT(&huart1, goal, 5);
+  if (ROS_ENABLE){
+    printf("ROS ENABLED\r\n");
+    HAL_UART_Receive_IT(&huart1, goal, 5);
+  }
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -409,11 +415,16 @@ Error_Handler();
   /* add threads, ... */
   Handle_Task_Steering     = osThreadNew(Function_Task_Steering,   NULL, &Attributes_Task_Steering);
   Handle_Task_Traction     = osThreadNew(Function_Task_Traction,   NULL, &Attributes_Task_Traction);
-  //Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
   Handle_Task_Telemetry    = osThreadNew(Function_Task_Telemetry,  NULL, &Attributes_Task_Telemetry);
-  Handle_Task_Goal         = osThreadNew(Function_Task_Goal,       NULL, &Attributes_Task_Goal);
   Handle_Task_MPU9250      = osThreadNew(Function_Task_MPU9250,    NULL, &Attributes_Task_MPU9250);
   Handle_Task_Blinkers     = osThreadNew(Function_Task_Blinkers,   NULL, &Attributes_Task_Blinkers);
+
+  if (ROS_ENABLE){
+    Handle_Task_Goal         = osThreadNew(Function_Task_Goal,       NULL, &Attributes_Task_Goal);
+  }
+  else{
+    Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
+  }
   
   /* USER CODE END RTOS_THREADS */
 
