@@ -144,6 +144,8 @@ float local_x = 0.0f,  local_y = 0.0f;
 
 int n_waypoints = 10;
 
+uint8_t goal[5] = {0,0,0,0,0} ; // (x1 x2) (y1 y2) seq
+
 /*
 typedef struct
 {
@@ -200,7 +202,7 @@ const osThreadAttr_t Attributes_Task_Goal = {
 const osThreadAttr_t Attributes_Task_Telemetry = {
   .name = "Task_Telemetry",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityBelowNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 const osThreadAttr_t Attributes_Task_MPU9250 = {
@@ -241,6 +243,7 @@ void initDoubleLinkedList(struct doubleLinkedList* list[], int n);
 void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, float org_x, float org_y);
 void elipseWaypoints(struct doubleLinkedListCord* list, float a, float b, int n, float org_x, float org_y);
 void infinteWaypoints(struct doubleLinkedListCord* list, float a, float width, float height, int n, float org_x, float org_y);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -376,7 +379,7 @@ Error_Handler();
   for(int i = 0; i < 4; i++){HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin); HAL_Delay(20);}
 
   printf("PreeRTOS\r\n");
-
+  HAL_UART_Receive_IT(&huart1, goal, 5);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -959,26 +962,31 @@ void Function_Task_Steering(void *argument){
 }
 
 void Function_Task_Goal(void *argument){
-  uint8_t current_seq = 0;
-  uint8_t goal[5] = {0,0,0,0,0} ; // (x1 x2) (y1 y2) seq
+  uint8_t current_seq = 254;
   for(;;){
-    HAL_UART_Receive(&huart1, &goal, 5, 100);
-    if(cord_flag == false){
+	HAL_UART_Receive_IT(&huart1, goal, 5);
+    if(cord_flag == false && current_seq == goal[4]){
       speed_target = 0;
       navigation_state = IDLE;
+      //printf("IDLE\r\n");
+      osDelay(100);
+      continue;
     }
     if (current_seq != goal[4]){
+      printf("NEW GOAL\r\n");
       cord_flag = true;
-      speed_target = 0;
+      speed_target = 0.3;
       current_seq = goal[4];
       x_desired = (float)((goal[0] << 8) | goal[1]);
       y_desired = (float)((goal[2] << 8) | goal[3]);
     }
     if (fabs(distance_to_wp) < min_turn_radius){
-      navigation_state = UNACHIEVABLE;
-    } else {
-      navigation_state = ACHIEVABLE;
-    }
+	  navigation_state = UNACHIEVABLE;
+	} else {
+	  navigation_state = ACHIEVABLE;
+	}
+
+    osDelay(100);
   }
 }
 
@@ -994,6 +1002,7 @@ void Function_Task_Navigation(void *argument){
   for(;;){
     if (finish || ( cnt > (n_waypoints * 2 - 1))){
     	navigation_state = IDLE;
+    	osDelay(100);
     	continue;
     }
 
@@ -1003,7 +1012,6 @@ void Function_Task_Navigation(void *argument){
 
       if (prev_node == cord_list.head && curr_node == cord_list.head){
         speed_target = 0.0;
-        navigation_state = IDLE;
         finish = true;
         continue;
       }
@@ -1037,6 +1045,7 @@ void Function_Task_Telemetry(void *argument){
     HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
     nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P: %.1f, %.1f WP: %.1f, %.1f D2WP: %.3f Traction: %.2f Speed Target: %.2f Speed: %0.2f Nav_state: \r\n", psi, steering_delta, local_x, local_y, x_desired, y_desired, distance_to_wp, traction_setpoint, speed_target, velocity_union->val, navigation_state);
     HAL_UART_Transmit(&huart1, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
+    nbytes = sprintf(bt_msg, "Psi: %.2f Delta: %.3f P_BT: %d P: %.1f, %.1f WP: %.1f, %.1f D2WP: %.3f Traction: %.2f Speed Target: %.2f Speed: %0.2f Nav_state: \r\n", psi, steering_delta, goal[4], local_x, local_y, x_desired, y_desired, distance_to_wp, traction_setpoint, speed_target, velocity_union->val, navigation_state);
     HAL_UART_Transmit(&huart3, (uint8_t*)bt_msg, nbytes, HAL_MAX_DELAY);
 
     osDelay(100);
@@ -1112,6 +1121,16 @@ void calibrate_MPU9250(SPI_HandleTypeDef *spi){
   MagOffset[2] = MagAccum[2] / num_samples;
 
 }
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	//printf("Recieved \r\n");
+    if(huart->Instance == huart1.Instance)
+    {
+    HAL_UART_Receive_IT(&huart1, goal, 5);
+    }
+}
+
 void circleWaypoints(struct doubleLinkedListCord* list, float radius, int n, float org_x, float org_y){
   float angle_increment = 360.00 / (double)n;
   float x = 0;
@@ -1183,7 +1202,7 @@ void StartDefaultTask(void *argument)
 }
 
 /**
-  * @brief  Period elapsed callback in non blocking mode
+  * @brief  Period elapsed + in non blocking mode
   * @note   This function is called  when TIM7 interrupt took place, inside
   * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
   * a global variable "uwTick" used as application time base.
