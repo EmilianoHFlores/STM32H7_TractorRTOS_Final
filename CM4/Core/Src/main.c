@@ -74,7 +74,7 @@ osThreadId_t Handle_Task_Wireless;
 const osThreadAttr_t Attributes_Task_Wireless = {
   .name = "Task_Wireless",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 osThreadId_t Handle_Task_CAN;
@@ -82,7 +82,7 @@ osThreadId_t Handle_Task_CAN;
 const osThreadAttr_t Attributes_Task_CAN = {
   .name = "Task_CAN",
   .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityHigh,
 };
 
 /* USER CODE END PV */
@@ -114,12 +114,18 @@ char myAckPayload[32] = "Ack by STMF7!";
 FDCAN_FilterTypeDef sFilterConfig;
 FDCAN_TxHeaderTypeDef TxHeader;
 FDCAN_RxHeaderTypeDef RxHeader;
-uint8_t *const RxData = (uint8_t *)0x30000000;
-osMutexId_t *const mutex_id_CAN = (osMutexId_t *)0x3000000C;
-osMutexId_t *const mutex_id_Wireless = (osMutexId_t *)0x3000001C;
+//uint8_t *const RxData = (uint8_t *)0x30000000;
+uint8_t RxData[8];
+
+union bytes_to_float{
+	uint8_t val_arr[sizeof(float)];
+	float val;
+};
+union bytes_to_float *float_bytes = (union bytes_to_float *)0x30000000;
 uint16_t *const x = (uint16_t *)0x30000030;
 uint16_t *const y = (uint16_t *)0x30000040;
 uint16_t *const z = (uint16_t *)0x30000050;
+bool *const flag = (bool *)0x30000060;
 /* USER CODE END 0 */
 
 /**
@@ -269,44 +275,44 @@ static void MX_FDCAN1_Init(void)
   /* USER CODE BEGIN FDCAN1_Init 2 */
   /*AAO+*/
 
-   /* Configure Rx filter */
+         /* Configure Rx filter */
 
-    sFilterConfig.IdType = FDCAN_EXTENDED_ID;
-    sFilterConfig.FilterIndex = 0;
-    sFilterConfig.FilterType = FDCAN_FILTER_MASK;
-    sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-    sFilterConfig.FilterID1 = 0x18FEFCA3;
-    sFilterConfig.FilterID2 = 0x00000000;
-    /* Configure global filter to reject all non-matching frames */
-    //HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE);
+          sFilterConfig.IdType = FDCAN_EXTENDED_ID;
+          sFilterConfig.FilterIndex = 0;
+          sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+          sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+          sFilterConfig.FilterID1 = 0x18FEFCA3;
+          sFilterConfig.FilterID2 = 0x00000000;
+          /* Configure global filter to reject all non-matching frames */
+          //HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE);
 
 
-    if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
-  	{
-  	   /* Filter configuration Error */
-  	   Error_Handler();
-  	}
-     /* Start the FDCAN module */
-    if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
-  	}
-  	   /* Start Error */
-    if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK) {
-  	}
-  	   /* Notification Error */
+          if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
+            {
+               /* Filter configuration Error */
+               Error_Handler();
+            }
+           /* Start the FDCAN module */
+          if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+            }
+               /* Start Error */
+          if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK) {
+            }
+               /* Notification Error */
 
-     /* Configure Tx buffer message */
-    //TxHeader.Identifier = 0x18FEFCA3;
-    TxHeader.Identifier = 0x0CFF14A3;
-    TxHeader.IdType = FDCAN_EXTENDED_ID;
-    TxHeader.TxFrameType = FDCAN_DATA_FRAME;
-    TxHeader.DataLength = FDCAN_DLC_BYTES_8;
-    TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-    TxHeader.BitRateSwitch = FDCAN_BRS_ON;
-    TxHeader.FDFormat = FDCAN_FD_CAN;
-    TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-    TxHeader.MessageMarker = 0x00;
+           /* Configure Tx buffer message */
+          //TxHeader.Identifier = 0x18FEFCA3;
+          TxHeader.Identifier = 0x0CFF14A3;
+          TxHeader.IdType = FDCAN_EXTENDED_ID;
+          TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+          TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+          TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+          TxHeader.BitRateSwitch = FDCAN_BRS_ON;
+          TxHeader.FDFormat = FDCAN_FD_CAN;
+          TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+          TxHeader.MessageMarker = 0x00;
 
-   /*AAO-*/
+         /*AAO-*/
   /* USER CODE END FDCAN1_Init 2 */
 
 }
@@ -419,6 +425,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -474,26 +481,55 @@ void Function_Task_IndicatorLED(void *argument){
 
 
 void Function_Task_Wireless(void *argument){
-	for(;;){
-    NRF24_read(myRxData, 32);
-    osMutexAcquire(mutex_id_Wireless, 1000);
-    *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
-    *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
-	*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
-    osMutexRelease(mutex_id_Wireless);
-
-	printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
-	osDelay(1000);
+	*flag = false;
+		/**x = 1;
+				 *y = 200;
+				 *z = 1;*/
+		for(;;){
+			if (NRF24_available()){
+				NRF24_read(myRxData, 32);
+				//osMutexAcquire(mutex_id_Wireless, 1000);
+				if ((((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1]) < 500){
+				  *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				}
+				if ((((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3]) < 500){
+						  *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+						}
+				if ((((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5]) < 500){
+						  *z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+						}
+				/*
+				*x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				*y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+				*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
+			/*
+					*x += 1;
+					 *y += 1;
+					 *z += 1;
+				if(*x > 100){
+					*x = 1;
+					*y=200;
+					*z = 300;
+				}*/
+				//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
+			}
+			osDelay(10);
   }
 }
 
 void Function_Task_CAN(void *argument){
 	for(;;){
-		osMutexAcquire(mutex_id_CAN, 1000);
-		HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader, RxData);
-		osMutexRelease(mutex_id_CAN);
-		osDelay(100);
-	}
+			while (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK);
+			for(uint8_t i = 0; i < sizeof(float); i++){
+				float_bytes->val_arr[i] = RxData[i];
+			}
+
+					/*printf("\n\rCAN1 ID: %lx [%d]   ", RxHeader.Identifier, RxHeader.DataLength/65536);
+					for(int i = 0; i < RxHeader.DataLength/65536; i++){
+						printf("%lx ", RxData[i]);
+					}*/
+			osDelay(10);
+		}
 }
 
 void setup_NRF(void){
@@ -507,6 +543,7 @@ void setup_NRF(void){
 	  NRF24_setPayloadSize(32);
 	  NRF24_setDataRate(RF24_2MBPS);
 	  NRF24_openReadingPipe(0, RxpipeAddrs);
+    NRF24_openReadingPipe(1, 0xF0);
 	  NRF24_enableDynamicPayloads();
 	  printRadioSettings();
 

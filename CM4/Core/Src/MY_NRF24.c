@@ -74,9 +74,9 @@ uint8_t NRF24_read_register(uint8_t reg)
 	NRF24_csn(0);
 	//Transmit register address
 	spiBuf[0] = reg&0x1F;
-	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 500);
 	//Receive data
-	HAL_SPI_Receive(&nrf24_hspi, &spiBuf[1], 1, 100);
+	HAL_SPI_Receive(&nrf24_hspi, &spiBuf[1], 1, 500);
 	retData = spiBuf[1];
 	//Bring CSN high
 	NRF24_csn(1);
@@ -91,9 +91,9 @@ void NRF24_read_registerN(uint8_t reg, uint8_t *buf, uint8_t len)
 	//Transmit register address
 	spiBuf[0] = reg&0x1F;
 	//spiStatus = NRF24_SPI_Write(spiBuf, 1);
-	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 500);
 	//Receive data
-	HAL_SPI_Receive(&nrf24_hspi, buf, len, 100);
+	HAL_SPI_Receive(&nrf24_hspi, buf, len, 500);
 	//Bring CSN high
 	NRF24_csn(1);
 }
@@ -106,7 +106,7 @@ void NRF24_write_register(uint8_t reg, uint8_t value)
 	//Transmit register address and data
 	spiBuf[0] = reg|0x20;
 	spiBuf[1] = value;
-	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 2, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 2, 500);
 	//Bring CSN high
 	NRF24_csn(1);
 }
@@ -118,8 +118,8 @@ void NRF24_write_registerN(uint8_t reg, const uint8_t* buf, uint8_t len)
 	NRF24_csn(0);
 	//Transmit register address and data
 	spiBuf[0] = reg|0x20;
-	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 100);
-	HAL_SPI_Transmit(&nrf24_hspi, (uint8_t*)buf, len, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, spiBuf, 1, 500);
+	HAL_SPI_Transmit(&nrf24_hspi, (uint8_t*)buf, len, 500);
 	//Bring CSN high
 	NRF24_csn(1);
 }
@@ -131,8 +131,8 @@ void NRF24_write_payload(const void* buf, uint8_t len)
 	NRF24_csn(0);
 	//Send Write Tx payload command followed by pbuf data
 	wrPayloadCmd = CMD_W_TX_PAYLOAD;
-	HAL_SPI_Transmit(&nrf24_hspi, &wrPayloadCmd, 1, 100);
-	HAL_SPI_Transmit(&nrf24_hspi, (uint8_t *)buf, len, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, &wrPayloadCmd, 1, 500);
+	HAL_SPI_Transmit(&nrf24_hspi, (uint8_t *)buf, len, 500);
 	//Bring CSN high
 	NRF24_csn(1);
 }
@@ -145,8 +145,8 @@ void NRF24_read_payload(void* buf, uint8_t len)
 	//Read data from Rx payload buffer
 	NRF24_csn(0);
 	cmdRxBuf = CMD_R_RX_PAYLOAD;
-	HAL_SPI_Transmit(&nrf24_hspi, &cmdRxBuf, 1, 100);
-	HAL_SPI_Receive(&nrf24_hspi, buf, data_len, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, &cmdRxBuf, 1, 500);
+	HAL_SPI_Receive(&nrf24_hspi, buf, data_len, 500);
 	NRF24_csn(1);
 }
 
@@ -716,7 +716,7 @@ void NRF24_ACTIVATE_cmd(void)
 	NRF24_csn(0);
 	cmdRxBuf[0] = CMD_ACTIVATE;
 	cmdRxBuf[1] = 0x73;
-	HAL_SPI_Transmit(&nrf24_hspi, cmdRxBuf, 2, 100);
+	HAL_SPI_Transmit(&nrf24_hspi, cmdRxBuf, 2, 500);
 	NRF24_csn(1);
 }
 //48. Get AckPayload Size

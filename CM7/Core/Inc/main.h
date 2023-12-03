@@ -68,9 +68,9 @@ void Error_Handler(void);
 #define LD3_Pin GPIO_PIN_14
 #define LD3_GPIO_Port GPIOB
 #define Left_Blinker_Pin GPIO_PIN_8
-#define Left_Blinker_GPIO_Port GPIOB
-#define Right_Blinker_Pin GPIO_PIN_9
-#define Right_Blinker_GPIO_Port GPIOB
+#define Left_Blinker_GPIO_Port GPIOC
+#define Right_Blinker_Pin GPIO_PIN_6
+#define Right_Blinker_GPIO_Port GPIOD
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
