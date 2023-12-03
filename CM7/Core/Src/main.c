@@ -362,16 +362,6 @@ Error_Handler();
   float a_f = 9;
   int b = 30;
 
-  //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
-  //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
-  //infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
-  
-  //c_traverse(&cord_list);
-
-  //x_desired = cord_list.head->x;
-  //y_desired = cord_list.head->y;
-
-
   //PID init
   PID_init(&pid, motorP, motorI, motorD, motorIMax, motorOutMin, motorOutMax);
 
@@ -424,6 +414,14 @@ Error_Handler();
   }
   else{
     Handle_Task_Navigation   = osThreadNew(Function_Task_Navigation, NULL, &Attributes_Task_Navigation);
+    //circleWaypoints(&cord_list, radius, n_waypoints, org_x, org_y);
+    //elipseWaypoints(&cord_list, a, b, n_waypoints, org_x, org_y);
+    infinteWaypoints(&cord_list, a_f, 2.5, 1, n_waypoints, org_x, org_y);
+    
+    //c_traverse(&cord_list);
+
+    x_desired = cord_list.head->x;
+    y_desired = cord_list.head->y;
   }
   
   /* USER CODE END RTOS_THREADS */
