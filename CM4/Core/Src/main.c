@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "MY_NRF24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,6 +45,10 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+FDCAN_HandleTypeDef hfdcan1;
+
+SPI_HandleTypeDef hspi1;
+
 UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
@@ -65,22 +69,63 @@ const osThreadAttr_t Attributes_Task_IndicatorLED = {
 };
 uint8_t indicator_mode = 1;
 
+osThreadId_t Handle_Task_Wireless;
+
+const osThreadAttr_t Attributes_Task_Wireless = {
+  .name = "Task_Wireless",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityHigh,
+};
+
+osThreadId_t Handle_Task_CAN;
+
+const osThreadAttr_t Attributes_Task_CAN = {
+  .name = "Task_CAN",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityHigh,
+};
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 static void MX_GPIO_Init(void);
+static void MX_FDCAN1_Init(void);
+static void MX_SPI1_Init(void);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
 void Function_Task_IndicatorLED(void *argument);
+void Function_Task_Wireless(void *argument);
+void Function_Task_CAN(void *argument);
+
+void setup_NRF(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+uint64_t RxpipeAddrs = 0x11223344AA;
+uint8_t myRxData[50];
+char myAckPayload[32] = "Ack by STMF7!";
 
+
+
+FDCAN_FilterTypeDef sFilterConfig;
+FDCAN_TxHeaderTypeDef TxHeader;
+FDCAN_RxHeaderTypeDef RxHeader;
+//uint8_t *const RxData = (uint8_t *)0x30000000;
+uint8_t RxData[8];
+
+union bytes_to_float{
+	uint8_t val_arr[sizeof(float)];
+	float val;
+};
+union bytes_to_float *float_bytes = (union bytes_to_float *)0x30000000;
+uint16_t *const x = (uint16_t *)0x30000030;
+uint16_t *const y = (uint16_t *)0x30000040;
+uint16_t *const z = (uint16_t *)0x30000050;
+bool *const flag = (bool *)0x30000060;
 /* USER CODE END 0 */
 
 /**
@@ -123,8 +168,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_FDCAN1_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-
+  MX_USART3_UART_Init();
+  setup_NRF();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -154,7 +202,8 @@ int main(void)
   /* add threads, ... */
 
   Handle_Task_IndicatorLED       = osThreadNew(Function_Task_IndicatorLED,       NULL,        &Attributes_Task_IndicatorLED);
-
+  Handle_Task_Wireless      = osThreadNew(Function_Task_Wireless,       NULL,        &Attributes_Task_Wireless);
+  Handle_Task_CAN      = osThreadNew(Function_Task_CAN,       NULL,        &Attributes_Task_CAN);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -174,6 +223,146 @@ int main(void)
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
+}
+
+/**
+  * @brief FDCAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FDCAN1_Init(void)
+{
+
+  /* USER CODE BEGIN FDCAN1_Init 0 */
+
+  /* USER CODE END FDCAN1_Init 0 */
+
+  /* USER CODE BEGIN FDCAN1_Init 1 */
+
+  /* USER CODE END FDCAN1_Init 1 */
+  hfdcan1.Instance = FDCAN1;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.ProtocolException = ENABLE;
+  hfdcan1.Init.NominalPrescaler = 2;
+  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 0x3F;
+  hfdcan1.Init.NominalTimeSeg2 = 16;
+  hfdcan1.Init.DataPrescaler = 1;
+  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataTimeSeg1 = 1;
+  hfdcan1.Init.DataTimeSeg2 = 1;
+  hfdcan1.Init.MessageRAMOffset = 0;
+  hfdcan1.Init.StdFiltersNbr = 1;
+  hfdcan1.Init.ExtFiltersNbr = 0;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 1;
+  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.RxFifo1ElmtsNbr = 0;
+  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.RxBuffersNbr = 0;
+  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.TxEventsNbr = 0;
+  hfdcan1.Init.TxBuffersNbr = 0;
+  hfdcan1.Init.TxFifoQueueElmtsNbr = 1;
+  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN FDCAN1_Init 2 */
+  /*AAO+*/
+
+         /* Configure Rx filter */
+
+          sFilterConfig.IdType = FDCAN_EXTENDED_ID;
+          sFilterConfig.FilterIndex = 0;
+          sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+          sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+          sFilterConfig.FilterID1 = 0x18FEFCA3;
+          sFilterConfig.FilterID2 = 0x00000000;
+          /* Configure global filter to reject all non-matching frames */
+          //HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE);
+
+
+          if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
+            {
+               /* Filter configuration Error */
+               Error_Handler();
+            }
+           /* Start the FDCAN module */
+          if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+            }
+               /* Start Error */
+          if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK) {
+            }
+               /* Notification Error */
+
+           /* Configure Tx buffer message */
+          //TxHeader.Identifier = 0x18FEFCA3;
+          TxHeader.Identifier = 0x0CFF14A3;
+          TxHeader.IdType = FDCAN_EXTENDED_ID;
+          TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+          TxHeader.DataLength = FDCAN_DLC_BYTES_8;
+          TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+          TxHeader.BitRateSwitch = FDCAN_BRS_ON;
+          TxHeader.FDFormat = FDCAN_FD_CAN;
+          TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+          TxHeader.MessageMarker = 0x00;
+
+         /*AAO-*/
+  /* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 0x0;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  hspi1.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
 }
 
 /**
@@ -234,10 +423,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PC6 PC7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -275,6 +477,78 @@ void Function_Task_IndicatorLED(void *argument){
 	  	  }
 	  }
   }
+}
+
+
+void Function_Task_Wireless(void *argument){
+	*flag = false;
+		/**x = 1;
+				 *y = 200;
+				 *z = 1;*/
+		for(;;){
+			if (NRF24_available()){
+				NRF24_read(myRxData, 32);
+				//osMutexAcquire(mutex_id_Wireless, 1000);
+				if ((((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1]) < 500){
+				  *x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				}
+				if ((((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3]) < 500){
+						  *y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+						}
+				if ((((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5]) < 500){
+						  *z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+						}
+				/*
+				*x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+				*y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+				*z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];*/
+			/*
+					*x += 1;
+					 *y += 1;
+					 *z += 1;
+				if(*x > 100){
+					*x = 1;
+					*y=200;
+					*z = 300;
+				}*/
+				//printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
+			}
+			osDelay(10);
+  }
+}
+
+void Function_Task_CAN(void *argument){
+	for(;;){
+			while (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK);
+			for(uint8_t i = 0; i < sizeof(float); i++){
+				float_bytes->val_arr[i] = RxData[i];
+			}
+
+					/*printf("\n\rCAN1 ID: %lx [%d]   ", RxHeader.Identifier, RxHeader.DataLength/65536);
+					for(int i = 0; i < RxHeader.DataLength/65536; i++){
+						printf("%lx ", RxData[i]);
+					}*/
+			osDelay(10);
+		}
+}
+
+void setup_NRF(void){
+	//Configure CSN and CE pins
+	NRF24_begin(GPIOC, GPIO_PIN_6, GPIO_PIN_7, hspi1);
+	nrf24_DebugUART_Init(huart3);
+
+	//Configure NRF settings
+	 NRF24_setAutoAck(false);
+	  NRF24_setChannel(52);
+	  NRF24_setPayloadSize(32);
+	  NRF24_setDataRate(RF24_2MBPS);
+	  NRF24_openReadingPipe(0, RxpipeAddrs);
+    NRF24_openReadingPipe(1, 0xF0);
+	  NRF24_enableDynamicPayloads();
+	  printRadioSettings();
+
+	  //Configure NRF to be receiver
+	  NRF24_startListening();
 }
 
 /* USER CODE END 4 */

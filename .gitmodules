@@ -1,0 +1,3 @@
+[submodule "tractor_ws/src/rosbot_ros"]
+	path = tractor_ws/src/rosbot_ros
+	url = https://github.com/EmilianoHFlores/rosbot_ros
